@@ -26,7 +26,6 @@ float current_temp = -1;
 
 
 void setup() {
-  Serial.begin(9600);
   delayMS = 2000; 
 
   temp_sensor.begin();

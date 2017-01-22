@@ -38,11 +38,16 @@ void setup() {
   delayMS = 2000; 
   temp_sensor.begin();
 
-  //Wire.begin();
+  Wire.begin();
   
   rtc.begin();
-
-  rtc.adjust(DateTime(2017, 1, 22, 18, 23, 0));
+  if (! rtc.isrunning()) {
+    Serial.println("RTC is NOT running!");
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(__DATE__, __TIME__));
+  }
+  
+  //rtc.adjust(DateTime(2017, 1, 22, 18, 23, 0));
 
 
 }
@@ -50,32 +55,32 @@ void setup() {
 void loop() {
   
   //Read RTC
-  DateTime now = rtc.now();  
-  Serial.print(getDateStr(now));
-  Serial.print(" ");
-  Serial.print(getTimeStr(now));
-  Serial.print("\n");
+//  DateTime now = rtc.now();  
+//  Serial.print(getDateStr(now));
+//  Serial.print(" ");
+//  Serial.print(getTimeStr(now));
+//  Serial.print("\n");
 
-    Serial.print(now.year(), DEC);
-    Serial.print('/');
-    Serial.print(now.month(), DEC);
-    Serial.print('/');
-    Serial.print(now.day(), DEC);
-    Serial.print(" (");
-    Serial.print(") ");
-    Serial.print(now.hour(), DEC);
-    Serial.print(':');
-    Serial.print(now.minute(), DEC);
-    Serial.print(':');
-    Serial.print(now.second(), DEC);
-    Serial.println();
-    
-    Serial.print(" since midnight 1/1/1970 = ");
-    Serial.print(now.unixtime());
-    Serial.print("s = ");
-    Serial.print(now.unixtime() / 86400L);
-    Serial.println("d");
-
+//    Serial.print(now.year(), DEC);
+//    Serial.print('/');
+//    Serial.print(now.month(), DEC);
+//    Serial.print('/');
+//    Serial.print(now.day(), DEC);
+//    Serial.print(" (");
+//    Serial.print(") ");
+//    Serial.print(now.hour(), DEC);
+//    Serial.print(':');
+//    Serial.print(now.minute(), DEC);
+//    Serial.print(':');
+//    Serial.print(now.second(), DEC);
+//    Serial.println();
+//    
+//    Serial.print(" since midnight 1/1/1970 = ");
+//    Serial.print(now.unixtime());
+//    Serial.print("s = ");
+//    Serial.print(now.unixtime() / 86400L);
+//    Serial.println("d");
+//
   //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
 
   //Read button inputs
