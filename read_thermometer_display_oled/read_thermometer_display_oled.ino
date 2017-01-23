@@ -8,6 +8,8 @@
 
 //I/O Pins in use
 #define ONE_WIRE_BUS 2
+#define OLED_I2C_SW_CLK 3
+#define OLED_I2C_SW_SDA 4
 
 //Thermometer variables
 // Setup a oneWire instance to communicate with any OneWire devices 
@@ -19,6 +21,7 @@ DallasTemperature temp_sensor(&oneWire);
 //OLED
 //U8X8_SH1106_128X64_VCOMH0_HW_I2C oled;
 U8G2_SH1106_128X64_VCOMH0_1_HW_I2C oled(U8G2_R0);
+//U8G2_SH1106_128X64_VCOMH0_1_SW_I2C oled(U8G2_R0, OLED_I2C_SW_CLK,OLED_I2C_SW_SDA);
 
 //Global and stuff to initate once
 uint32_t delayMS;
@@ -53,6 +56,7 @@ void loop() {
 //  Serial.print("\n");
     
   //Display current status
+  oled.initDisplay();
   oled.firstPage();
   do {
     oled.setFont(u8g2_font_ncenB14_tr);

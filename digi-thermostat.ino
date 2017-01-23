@@ -1,33 +1,39 @@
-
-#include <U8x8lib.h>
-#include <U8g2lib.h>
-
 #include <Wire.h>
 #include <RTClib.h>
   
 #include <DallasTemperature.h>
 #include <OneWire.h>
 
+#include <LiquidCrystal.h>
+
 //I/O Pins in use
-#define ONE_WIRE_BUS 2
+#define THERM_ONE_WIRE_BUS 2
+#define LCD_RS  12
+#define LCD_E   11
+#define LCD_D4  10
+#define LCD_D5  9
+#define LCD_D6  8
+#define LCD_D7  7
+
+#define BOILER_ON  "ON"
+#define BOILER_OFF  "OFF"
 
 //Thermometer variables
 // Setup a oneWire instance to communicate with any OneWire devices 
 // (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
+OneWire oneWire(THERM_ONE_WIRE_BUS);
 // Pass our oneWire reference to Dallas Temperature.
 DallasTemperature temp_sensor(&oneWire);
-
-//OLED
-//U8X8_SH1106_128X64_VCOMH0_HW_I2C oled;
-U8G2_SH1106_128X64_VCOMH0_1_HW_I2C oled(U8G2_R0);
 
 //RTC
 DS1307 rtc;
 
+//LCD
+LiquidCrystal lcd(LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
+
 //Global and stuff to initate once
 uint32_t delayMS;
-float current_temp = -1;
+float currentTemp = -1;
 
 String getDateStr(const DateTime& dt) {
     return String(dt.year()) + "/" + String(dt.month()) + "/" + String(dt.day(), DEC);
@@ -57,26 +63,28 @@ String getTimeStr(const DateTime& dt) {
 
 void setup() {
   Serial.begin(9600);
-  delayMS = 2000; 
+  delayMS = 500; 
   temp_sensor.begin();
 
-//  Wire.begin();
- 
-  oled.begin();
-  oled.enableUTF8Print();    // enable UTF8 support for the Arduino print() function
-
+  Wire.begin();
   rtc.begin();
-//  rtc.adjust(DateTime(2017, 1, 22, 19, 59, 0));
+//  rtc.adjust(DateTime(2017, 1, 23, 7, 58, 0));
+ 
+  // set up the LCD's number of columns and rows:
+  lcd.begin(16, 2);
+
 }
 
 void loop() {
+  float setTemp = 18.5;
+  String boilerStatStr = BOILER_OFF;
   
   //Read RTC
-  DateTime now = rtc.now();  
-  Serial.print(getDateStr(now));
-  Serial.print(" ");
-  Serial.print(getTimeStr(now));
-  Serial.print("\n");
+  DateTime now = rtc.now();
+//  Serial.print(getDateStr(now));
+//  Serial.print(" ");
+//  Serial.print(getTimeStr(now));
+//  Serial.print("\n");
 
   //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
 
@@ -86,26 +94,29 @@ void loop() {
   // call sensors.requestTemperatures() to issue a global temperature
   // request to all devices on the bus
   temp_sensor.requestTemperatures(); // Send the command to get temperatures
-  current_temp = temp_sensor.getTempCByIndex(0);
-  String cur_temp_str = String(current_temp, 2);
+  currentTemp = temp_sensor.getTempCByIndex(0);
+  String currTempStr = String(currentTemp, 1);
 
-  Serial.print("Temperature for Device 1 is: " + cur_temp_str);
-  Serial.print("\n");
+//  Serial.print("Temperature for Device 1 is: " + currTempStr);
+//  Serial.print("\n");
     
   //Check temperature against current set point in schedule
-
+  
   //Turn boiler on or off
+  if (setTemp > currentTemp) {
+    boilerStatStr = BOILER_ON;
+  }
 
   //Display current status
-  oled.firstPage();
-  do {
-    oled.setFont(u8g2_font_ncenB14_tr);
-    oled.setCursor(0, 15);
-    oled.print(getTimeStr(now));
-    oled.setCursor(0, 30);
-    oled.print("Temp: " + cur_temp_str + "C");
-  } while ( oled.nextPage() );
-    
+  //Date + Time (19chars)  OR Time to reach set temp
+  //Current temp, set temp, external temp
+  
+  lcd.setCursor(0, 0);
+  String dateTimeStr = getTimeStr(now);
+  lcd.print(dateTimeStr + " " + currTempStr + "C");
+  lcd.setCursor(0, 1);
+  lcd.print("Set:" + String(setTemp, 1) + "C " + boilerStatStr);
+  
   //Report back current status and actions to in-station via RF transmitter
   
   delay(delayMS); //temporary delay in loop
