@@ -8,6 +8,7 @@
 #include <OneWire.h>
 
 #include <LiquidCrystal.h>
+//#include <LiquidCrystal_I2C.h>
 
 //Digital I/O Pins in use
 #define THERM_ONE_WIRE_BUS 2
@@ -24,10 +25,19 @@
 #define LCD_D6  8
 #define LCD_D7  7
 
+#define EEPROM_I2C_ADDR 0x50
+
 #define ON  1
 #define OFF  0
+//#define SERIAL_DEBUG
+#ifdef SERIAL_DEBUG
+#define LOOP_DELAY 5000
+#else
+#define LOOP_DELAY 500
+#endif
+
 #define TEMPERATURE_INTERVAL 15000UL
-#define RTC_READ_INTERVAL 1000UL
+#define RTC_READ_INTERVAL 500UL
 
 #define LCD_ROWS 2
 #define LCD_COLS 20
@@ -69,16 +79,17 @@ union SchedUnion {
 };
 
 struct Debounce {
-  int buttonState = LOW;             // the current reading from the input pin
+  int pin;
+  int buttonState = LOW;       // the current reading from the input pin
   int lastButtonState = LOW;   // the previous reading from the input pin
   unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
 };
 
 //Global and stuff to initate once
-uint32_t delayMS = 500;
+uint32_t delayMS = LOOP_DELAY;
 float currentTemp = -1;
 boolean heat_on = FALSE;
-int noOfSchedules = 0;
+byte noOfSchedules = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
@@ -90,35 +101,53 @@ struct Debounce boostButton;
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 void setup() {
+#ifdef SERIAL_DEBUG
   Serial.begin(9600);
+  while (!Serial); 
+#endif      
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(RELAY, OUTPUT);
   //Digi ins
   pinMode(UP_BUTTON, INPUT);
+  upButton.pin = UP_BUTTON;
   pinMode(DOWN_BUTTON, INPUT);
+  downButton.pin = DOWN_BUTTON;
   pinMode(BOOST_BUTTON, INPUT);
+  boostButton.pin = BOOST_BUTTON;
   
-  //power on indicator
+  //turn on power indicator - set orange until initialised
   digitalWrite(RED_LED, HIGH);
+  digitalWrite(GREEN_LED, HIGH);
 
   temp_sensor.begin();
+  temp_sensor.requestTemperatures(); // Send the command to get temperatures
+  currentTemp = temp_sensor.getTempCByIndex(0);
 
   Wire.begin();
-//  rtc.adjust(DateTime(2017, 1, 23, 7, 58, 0));
- 
+
+//  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
+//  rtc.set(0, 55, 18, 4, 26, 1, 17);
+//  eepromWrite(0,0x00);
+  
   // set up the LCD's number of columns and rows:
   lcd.begin(LCD_COLS, LCD_ROWS);
 
   //Read schedule from EEPROM
   //Note: Max position: 32767
   //First byte is number of schedules
-  noOfSchedules = rtc.eeprom_read(0);
+  noOfSchedules = eepromRead(0);
+#ifdef SERIAL_DEBUG
+  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
+#endif
+  if (noOfSchedules > MAX_SCHEDULES) {
+    noOfSchedules = MAX_SCHEDULES;
+  }
   int cnt = 1;
   for (int i=0; i<noOfSchedules; i++) {
     for (int j=0; j<sizeof(SchedByElem); j++) {
-      schedules[i][j] = rtc.eeprom_read(cnt);
+      schedules[i][j] = eepromRead(cnt);
       cnt++;
     }
   }
@@ -132,7 +161,13 @@ void setup() {
     union SchedUnion sched;
     sched.elem = elem;
     memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
+    noOfSchedules = 1;
   }
+#ifdef SERIAL_DEBUG
+  Serial.println("go");
+#endif
+  //Turn power led RED to indicate running
+  digitalWrite(GREEN_LED, LOW);
 }
 
 void loop() {
@@ -143,17 +178,19 @@ void loop() {
     rtc.refresh();
     lastRTCRead = currentMillis;
   }
-//  Serial.print(getDateStr(now));
-//  Serial.print(" ");
-//  Serial.print(getTimeStr(now));
-//  Serial.print("\n");
+#ifdef SERIAL_DEBUG
+  Serial.print(getDateStr());
+  Serial.print(" ");
+  Serial.print(getTimeStr());
+  Serial.print("\n");
+#endif
 
   //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
 
   //Read button inputs
-  debounceSwitch(UP_BUTTON, upButton); 
-  debounceSwitch(DOWN_BUTTON, downButton); 
-  debounceSwitch(BOOST_BUTTON, downButton); 
+  debounceSwitch(&upButton); 
+  debounceSwitch(&downButton); 
+  debounceSwitch(&downButton); 
 
   //Read thermometer
   if (currentMillis - lastTempRead > TEMPERATURE_INTERVAL) {
@@ -161,12 +198,16 @@ void loop() {
     currentTemp = temp_sensor.getTempCByIndex(0);
     lastTempRead = currentMillis;
   }
-//  Serial.print("Temperature for Device 1 is: " + currTempStr);
-//  Serial.print("\n");
+#ifdef SERIAL_DEBUG
+  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
+#endif
     
   //Retreive current set point in schedule
   float setTemp = getSetPoint();
-  
+#ifdef SERIAL_DEBUG
+  Serial.println("Set point: " + String(setTemp, 1));
+#endif
+
   //Turn heating on or off depending on temp
   if (setTemp > currentTemp) {
     if (!heat_on) {
@@ -193,10 +234,34 @@ void loop() {
   
   //Report back current status to in-station via RF transmitter every minute
   
+#ifdef SERIAL_DEBUG
+  Serial.println("End loop");
+#endif
   delay(delayMS); //temporary delay in loop
 
 }
 
+void eepromWrite(unsigned int eeaddress, byte data ) {
+  int rdata = data;
+  Wire.beginTransmission(EEPROM_I2C_ADDR);
+  Wire.write((int)(eeaddress >> 8)); // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
+  Wire.write(rdata);
+  Wire.endTransmission();
+}
+
+byte eepromRead(unsigned int eeaddress ) {
+  byte rdata = 0xFF;
+  Wire.beginTransmission(EEPROM_I2C_ADDR);
+  Wire.write((int)(eeaddress >> 8)); // MSB
+  Wire.write((int)(eeaddress & 0xFF)); // LSB
+  Wire.endTransmission();
+  Wire.requestFrom(EEPROM_I2C_ADDR,1);
+  if (Wire.available()) rdata = Wire.read();
+  return rdata;
+}
+
+  
 float getSetPoint() {
   //Get mins in day
   uint16_t mins = rtc.hour() * 60 + rtc.minute();
@@ -206,13 +271,15 @@ float getSetPoint() {
   int temp = 0;
   int currDay = rtc.dayOfWeek();
   for (int i=0; i<noOfSchedules; i++) {
-    memcpy(&sched.raw, &schedules[0], sizeof(SchedByElem));
-    
+    memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
+//    Serial.println("Sched: " + sched.elem.day + String(" ") + sched.elem.temp);
+
     if (sched.elem.start <= mins && sched.elem.end > mins) {
       if (sched.elem.day == 0 && priority <= 1) {
         //All days match and not found higher
           priority = 1;
           temp = sched.elem.temp; 
+          Serial.println("Set 0: " + temp);
       }
       if (sched.elem.day == 0x200 && (currDay == 6 || currDay == 7) && priority <= 2) {
         //Its the weekend and not found higher
@@ -231,6 +298,7 @@ float getSetPoint() {
       }
     }
   }
+  return temp / 10.0;
 }
 
 String getDateStr() {
@@ -273,9 +341,9 @@ void switchHeat(boolean on) {
   }
 }
 
-void debounceSwitch(int pin, struct Debounce *button) {
+void debounceSwitch(struct Debounce *button) {
   // read the state of the switch into a local variable:
-  int reading = digitalRead(pin);
+  int reading = digitalRead(button->pin);
 
   // check to see if you just pressed the button
   // (i.e. the input went from LOW to HIGH),  and you've waited
