@@ -1,4 +1,3 @@
-
 #include <Wire.h>
 //#include <RTClib.h>
 //Include the this lib to write to eeprom on RTC board
@@ -10,14 +9,16 @@
 #include <LiquidCrystal.h>
 //#include <LiquidCrystal_I2C.h>
 
+#include <Bounce2.h>
+
 //Digital I/O Pins in use
-#define THERM_ONE_WIRE_BUS 2
-#define RELAY 3
-#define GREEN_LED 4
-#define RED_LED 5
-#define UP_BUTTON 6
-#define DOWN_BUTTON 13
-#define BOOST_BUTTON 1
+#define THERM_ONE_WIRE_BUS 13
+#define UP_BUTTON 2
+#define DOWN_BUTTON 3
+#define BOOST_BUTTON 3
+#define RELAY 4
+#define GREEN_LED 5
+#define RED_LED 6
 #define LCD_RS  12
 #define LCD_E   11
 #define LCD_D4  10
@@ -33,11 +34,15 @@
 #ifdef SERIAL_DEBUG
 #define LOOP_DELAY 5000
 #else
-#define LOOP_DELAY 500
+#define LOOP_DELAY 50
 #endif
-
-#define TEMPERATURE_INTERVAL 15000UL
+#define DEBOUNCE_TIME 50
 #define RTC_READ_INTERVAL 500UL
+//Schedule and Temp settings
+#define TEMPERATURE_READ_INTERVAL 15000UL
+#define MAX_SCHEDULES 50
+#define HYSTERSIS 0.5
+#define SET_INTERVAL 0.1
 
 #define LCD_ROWS 2
 #define LCD_COLS 20
@@ -47,8 +52,6 @@
 //uint16_t SS = Start minute (0 - 1440)
 //uint16_t EE = End time minute (0 - 1440)
 //uint16_t  TT = Set temperature tenths of C, 180 = 18.0C
-#define MAX_SCHEDULES 50
-#define DEBOUNCE_TIME 50
 
 //Thermometer variables
 // Setup a oneWire instance to communicate with any OneWire devices 
@@ -58,8 +61,6 @@ OneWire oneWire(THERM_ONE_WIRE_BUS);
 DallasTemperature temp_sensor(&oneWire);
 
 //RTC
-//DS1307 rtc;
-//EEPROM
 uRTCLib rtc;
 
 //LCD
@@ -78,25 +79,20 @@ union SchedUnion {
   byte raw[sizeof(SchedByElem)];
 };
 
-struct Debounce {
-  int pin;
-  int buttonState = LOW;       // the current reading from the input pin
-  int lastButtonState = LOW;   // the previous reading from the input pin
-  unsigned long lastDebounceTime = 0;  // the last time the output pin was toggled
-};
-
 //Global and stuff to initate once
-uint32_t delayMS = LOOP_DELAY;
 float currentTemp = -1;
+float lastScheduledTemp = 0;
+float currentSetTemp = 0;
 boolean heat_on = FALSE;
 byte noOfSchedules = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
 unsigned long boilerOnTime = 0;
-struct Debounce upButton;
-struct Debounce downButton;
-struct Debounce boostButton;
+
+Bounce upButton = Bounce();
+Bounce downButton = Bounce();
+Bounce boostButton = Bounce();
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
@@ -110,12 +106,15 @@ void setup() {
   pinMode(RED_LED, OUTPUT);
   pinMode(RELAY, OUTPUT);
   //Digi ins
-  pinMode(UP_BUTTON, INPUT);
-  upButton.pin = UP_BUTTON;
-  pinMode(DOWN_BUTTON, INPUT);
-  downButton.pin = DOWN_BUTTON;
-  pinMode(BOOST_BUTTON, INPUT);
-  boostButton.pin = BOOST_BUTTON;
+  pinMode(UP_BUTTON, INPUT_PULLUP);
+  upButton.attach(UP_BUTTON);
+  upButton.interval(DEBOUNCE_TIME);
+  pinMode(DOWN_BUTTON, INPUT_PULLUP);
+  downButton.attach(DOWN_BUTTON);
+  downButton.interval(DEBOUNCE_TIME);
+  pinMode(BOOST_BUTTON, INPUT_PULLUP);
+  boostButton.attach(BOOST_BUTTON);
+  boostButton.interval(DEBOUNCE_TIME);
   
   //turn on power indicator - set orange until initialised
   digitalWrite(RED_LED, HIGH);
@@ -163,6 +162,11 @@ void setup() {
     memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
     noOfSchedules = 1;
   }
+  //Get the time and current set temp
+  rtc.refresh();
+  lastScheduledTemp = getSetPoint();
+  currentSetTemp = lastScheduledTemp;
+  //Done set up
 #ifdef SERIAL_DEBUG
   Serial.println("go");
 #endif
@@ -170,13 +174,17 @@ void setup() {
   digitalWrite(GREEN_LED, LOW);
 }
 
+
+
 void loop() {
   unsigned long currentMillis = millis();
+  boolean changedState = false;
 
   if (currentMillis - lastRTCRead > RTC_READ_INTERVAL) {
     //Read RTC
     rtc.refresh();
     lastRTCRead = currentMillis;
+    changedState = true;
   }
 #ifdef SERIAL_DEBUG
   Serial.print(getDateStr());
@@ -187,57 +195,74 @@ void loop() {
 
   //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
 
-  //Read button inputs
-  debounceSwitch(&upButton); 
-  debounceSwitch(&downButton); 
-  debounceSwitch(&downButton); 
-
   //Read thermometer
-  if (currentMillis - lastTempRead > TEMPERATURE_INTERVAL) {
+  if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
     temp_sensor.requestTemperatures(); // Send the command to get temperatures
     currentTemp = temp_sensor.getTempCByIndex(0);
     lastTempRead = currentMillis;
+    changedState = true;
   }
 #ifdef SERIAL_DEBUG
   Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 #endif
     
   //Retreive current set point in schedule
-  float setTemp = getSetPoint();
+  float schedTemp = getSetPoint();
 #ifdef SERIAL_DEBUG
-  Serial.println("Set point: " + String(setTemp, 1));
+  Serial.println("Scheduled set point: " + String(currentTemp, 1));
 #endif
-
-  //Turn heating on or off depending on temp
-  if (setTemp > currentTemp) {
-    if (!heat_on) {
-      switchHeat(true);
-    }
-  } else if (heat_on) {
-    //Reached set temperature, turn heating off
-    switchHeat(false);
+  if (lastScheduledTemp != schedTemp) {
+    currentSetTemp = schedTemp;
+    lastScheduledTemp = schedTemp;
+  }
+  //Read button inputs
+  if (upButton.update() && upButton.fell()) {
+    //increase the set temp
+    currentSetTemp += SET_INTERVAL;
+    changedState = true;
+  }
+  if (downButton.update() && downButton.fell()) {
+    //decrease the set temp
+    currentSetTemp -= SET_INTERVAL;
+    changedState = true;
   }
 
-  //Display current status
-  //Date + Time (19chars)  OR Time to reach set temp
-  //Current temp, set temp, external temp
-  
-  lcd.setCursor(0, 0);
-  String dateTimeStr = getTimeStr();
-  String currTempStr = String(currentTemp, 1);
-  lcd.print(dateTimeStr + " " + currTempStr + "C");
-  lcd.setCursor(0, 1);
-  String boilerStatStr = heat_on ? "ON" : "OFF";
-  lcd.print("Set:" + String(setTemp, 1) + "C " + boilerStatStr);
+  //Turn heating on or off depending on temp
+  if ((currentSetTemp > currentTemp) && !heat_on) {
+    switchHeat(true);
+    changedState = true;
+  }
+  if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
+    //Reached set temperature, turn heating off
+    //Note: Add in hystersis to stop flip flopping
+    switchHeat(false);
+    changedState = true;
+  }
 
   //Check for any commands from in-station
   
-  //Report back current status to in-station via RF transmitter every minute
-  
+  //Report back current status to in-station via RF transmitter regularly
+
+  //Date + Time (19chars)  OR Time to reach set temp
+  //Current temp, set temp, external temp
+
+  if (changedState) {
+    //Display current status
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    String dateTimeStr = getTimeStr();
+    String currTempStr = String(currentTemp, 1);
+    lcd.print(dateTimeStr + " " + currTempStr + "C");
+    lcd.setCursor(0, 1);
+    String boilerStatStr = heat_on ? "ON" : "OFF";
+    lcd.print("Set:" + String(currentSetTemp, 1) + "C " + boilerStatStr);
+  }
+
+
 #ifdef SERIAL_DEBUG
   Serial.println("End loop");
 #endif
-  delay(delayMS); //temporary delay in loop
+  delay(LOOP_DELAY); //temporary delay in loop
 
 }
 
@@ -338,31 +363,6 @@ void switchHeat(boolean on) {
    digitalWrite(GREEN_LED, LOW);
    digitalWrite(RELAY, LOW);
    heat_on = false;
-  }
-}
-
-void debounceSwitch(struct Debounce *button) {
-  // read the state of the switch into a local variable:
-  int reading = digitalRead(button->pin);
-
-  // check to see if you just pressed the button
-  // (i.e. the input went from LOW to HIGH),  and you've waited
-  // long enough since the last press to ignore any noise:
-
-  // If the switch changed, due to noise or pressing:
-  if (reading != button->lastButtonState) {
-    // reset the debouncing timer
-    button->lastDebounceTime = millis();
-  }
-
-  if ((millis() - button->lastDebounceTime) > DEBOUNCE_TIME) {
-    // whatever the reading is at, it's been there for longer
-    // than the debounce delay, so take it as the actual current state:
-
-    // if the button state has changed:
-    if (reading != button->buttonState) {
-      button->buttonState = reading;
-    }
   }
 }
 
