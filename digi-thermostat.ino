@@ -1,32 +1,23 @@
 #include <Wire.h>
-//#include <RTClib.h>
-//Include the this lib to write to eeprom on RTC board
 #include <uRTCLib.h>
   
 #include <DallasTemperature.h>
 #include <OneWire.h>
 
-#include <LiquidCrystal.h>
-//#include <LiquidCrystal_I2C.h>
+//#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
 
+//Debounce switches
 #include <Bounce2.h>
 
 //Digital I/O Pins in use
-#define THERM_ONE_WIRE_BUS 13
-#define UP_BUTTON 2
-#define DOWN_BUTTON 3
-#define BOOST_BUTTON 3
-#define RELAY 4
-#define GREEN_LED 5
-#define RED_LED 6
-#define LCD_RS  12
-#define LCD_E   11
-#define LCD_D4  10
-#define LCD_D5  9
-#define LCD_D6  8
-#define LCD_D7  7
-
-#define EEPROM_I2C_ADDR 0x50
+#define THERM_ONE_WIRE_BUS 2
+#define UP_BUTTON 3
+#define DOWN_BUTTON 4
+#define BOOST_BUTTON 5
+#define RELAY 6
+#define GREEN_LED 7
+#define RED_LED 8
 
 #define ON  1
 #define OFF  0
@@ -37,15 +28,20 @@
 #define LOOP_DELAY 50
 #endif
 #define DEBOUNCE_TIME 50
+#define BUTTON_HOLD_TIME 400 //Time button is held down to increment or decrement
+#define BOOST_TIME 30*60000 //Length of time to turn on heat regardless of set temperature
 #define RTC_READ_INTERVAL 500UL
-//Schedule and Temp settings
 #define TEMPERATURE_READ_INTERVAL 15000UL
-#define MAX_SCHEDULES 50
-#define HYSTERSIS 0.5
-#define SET_INTERVAL 0.1
 
-#define LCD_ROWS 2
+//Schedule and Temp settings
+#define MAX_SCHEDULES 50
+#define HYSTERSIS 0.5  //Degrees over the set temp to drive the current temp to stop output jitter
+#define SET_INTERVAL 0.1 //Amount to increase the temp by per button press
+
+#define LCD_ROWS 4
 #define LCD_COLS 20
+
+#define EEPROM_I2C_ADDR 0x50
 
 //Each schedule is: DDSSEETT
 //byte D = "0" for every day, "0x0100" for Weekday (Mon - Fri), "0x0200" for Weekend (Sat, Sun), 1 - Monday, 2 - Tuesday,....7 - Sunday
@@ -64,7 +60,7 @@ DallasTemperature temp_sensor(&oneWire);
 uRTCLib rtc;
 
 //LCD
-LiquidCrystal lcd(LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
+LiquidCrystal_I2C lcd(0x27,20,4);
 
 //Struct is long word padded...
 struct SchedByElem {
@@ -83,18 +79,28 @@ union SchedUnion {
 float currentTemp = -1;
 float lastScheduledTemp = 0;
 float currentSetTemp = 0;
+float degPerHour = 5.0;
+float extAdj = 0.2;
+
 boolean heat_on = FALSE;
 byte noOfSchedules = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
 unsigned long boilerOnTime = 0;
+unsigned long lastBoostAdjTime = 0;
+char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
 Bounce upButton = Bounce();
+unsigned long upButtonDownTime = 0;
 Bounce downButton = Bounce();
+unsigned long downButtonDownTime = 0;
 Bounce boostButton = Bounce();
+unsigned long boostTimer = 0;
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
+
+float extTemp = 100.0; //This will be set by remote command
 
 void setup() {
 #ifdef SERIAL_DEBUG
@@ -127,12 +133,13 @@ void setup() {
   Wire.begin();
 
 //  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
-//  rtc.set(0, 55, 18, 4, 26, 1, 17);
+//  rtc.set(0,19, 19, 7, 29, 1, 17);
 //  eepromWrite(0,0x00);
   
   // set up the LCD's number of columns and rows:
-  lcd.begin(LCD_COLS, LCD_ROWS);
-
+  lcd.init();
+  lcd.backlight();
+  
   //Read schedule from EEPROM
   //Note: Max position: 32767
   //First byte is number of schedules
@@ -172,13 +179,14 @@ void setup() {
 #endif
   //Turn power led RED to indicate running
   digitalWrite(GREEN_LED, LOW);
+  lcd.backlight();
 }
-
 
 
 void loop() {
   unsigned long currentMillis = millis();
   boolean changedState = false;
+  boolean bigChangeOfState = false;
 
   if (currentMillis - lastRTCRead > RTC_READ_INTERVAL) {
     //Read RTC
@@ -193,7 +201,20 @@ void loop() {
   Serial.print("\n");
 #endif
 
+  if (boostTimer > 0) {
+    unsigned long adj = currentMillis - lastBoostAdjTime;
+    if (boostTimer > adj) {
+      boostTimer -= adj;
+      lastBoostAdjTime = currentMillis;
+    } else {
+      boostTimer = 0; 
+    }
+  }
+
   //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
+  //lcd.noBacklight();
+//    lcd.backlight();
+
 
   //Read thermometer
   if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
@@ -221,22 +242,52 @@ void loop() {
     currentSetTemp += SET_INTERVAL;
     changedState = true;
   }
+  if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
+    //increase the set temp
+    currentSetTemp += SET_INTERVAL;
+    upButtonDownTime = currentMillis;
+    changedState = true;
+  }
   if (downButton.update() && downButton.fell()) {
     //decrease the set temp
     currentSetTemp -= SET_INTERVAL;
     changedState = true;
   }
-
-  //Turn heating on or off depending on temp
-  if ((currentSetTemp > currentTemp) && !heat_on) {
-    switchHeat(true);
+  if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
+    //decrease the set temp
+    currentSetTemp -= SET_INTERVAL;
+    downButtonDownTime = currentMillis;
     changedState = true;
   }
-  if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
-    //Reached set temperature, turn heating off
-    //Note: Add in hystersis to stop flip flopping
-    switchHeat(false);
-    changedState = true;
+  if (boostButton.update() && boostButton.fell()) {
+    if (boostTimer == 0) {
+      //turn heating on for a bit, regardless of set temp
+      switchHeat(true);
+      boostTimer = BOOST_TIME;
+      lastBoostAdjTime = currentMillis;
+      changedState = true;
+    } else {
+      //boost already running - treat as cancel boost
+      boostTimer = 0;
+      changedState = true;
+    }
+    bigChangeOfState = true;
+  }
+
+  if (boostTimer == 0) {
+    //Turn heating on or off depending on temp
+    if ((currentSetTemp > currentTemp) && !heat_on) {
+      switchHeat(true);
+      changedState = true;
+      bigChangeOfState = true;
+    }
+    if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
+      //Reached set temperature, turn heating off
+      //Note: Add in hystersis to stop flip flopping
+      switchHeat(false);
+      changedState = true;
+      bigChangeOfState = true;
+    }
   }
 
   //Check for any commands from in-station
@@ -248,14 +299,22 @@ void loop() {
 
   if (changedState) {
     //Display current status
-    lcd.clear();
+    if (bigChangeOfState) {
+      lcd.clear();
+    }
     lcd.setCursor(0, 0);
     String dateTimeStr = getTimeStr();
     String currTempStr = String(currentTemp, 1);
-    lcd.print(dateTimeStr + " " + currTempStr + "C");
+    lcd.print(dateTimeStr + "   " + currTempStr + "C");
     lcd.setCursor(0, 1);
-    String boilerStatStr = heat_on ? "ON" : "OFF";
-    lcd.print("Set:" + String(currentSetTemp, 1) + "C " + boilerStatStr);
+    int runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
+    String runTimeStr = "Run: " + (boostTimer > 0 ? getMinSec(boostTimer) : getMinSec(runTime));
+    lcd.print(runTimeStr + " Set:" + String(currentSetTemp, 1) + "C ");
+    lcd.setCursor(0, 2);
+    String boilerStatStr = heat_on ? "ON    " : "OFF   ";
+    lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 100.0 ? "??.?" : String(extTemp, 1)) + "C");
+    lcd.setCursor(0, 3);
+    lcd.print("This is the MOTD");
   }
 
 
@@ -326,12 +385,45 @@ float getSetPoint() {
   return temp / 10.0;
 }
 
-String getDateStr() {
-    return String(rtc.year()) + "/" + String(rtc.month()) + "/" + String(rtc.day(), DEC);
+//String getDateStr() {
+//    return String(rtc.year()) + "/" + String(rtc.month()) + "/" + String(rtc.day(), DEC);
+//}
+
+//Calculate the number of ms to reach set temp
+int calcRunTime(float tempNow, float tempSet, float tempExt) {
+  int noMs = 0;
+  if (tempNow < tempSe  t) {
+    float deg = degPerHour;
+    if (tempExt != 100.0) {
+      //Reduce based on outside temp
+      deg -= (tempNow - tempExt) * extAdj;
+    }
+    float noHours = (tempSet - tempNow) / deg;
+    noMs = (int)(noHours * 3600 * 1000);
+  }
+  return noMs;
+}
+
+String getMinSec(unsigned long timeMs) {
+  unsigned long tsecs = timeMs/1000;
+  unsigned long mins = tsecs/60;
+  unsigned long secs = tsecs % 60;
+  String timeStr = "";
+  if (mins < 10) {
+    timeStr += "0";
+  }
+  timeStr += String(mins, DEC) + ":";
+  if (secs < 10) {
+    timeStr += "0";
+  }
+  timeStr += String(secs, DEC);
+  return timeStr;
 }
 
 String getTimeStr() {
   String time = "";
+  time += dayNames[rtc.dayOfWeek() - 1];
+  time += " ";
   if (rtc.hour() < 10) {
     time += "0" + String(rtc.hour(),DEC);
   } else {
