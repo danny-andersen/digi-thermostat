@@ -10,44 +10,13 @@
 //Debounce switches
 #include <Bounce2.h>
 
-//Digital I/O Pins in use
-#define THERM_ONE_WIRE_BUS 2
-#define UP_BUTTON 3
-#define DOWN_BUTTON 4
-#define BOOST_BUTTON 5
-#define RELAY 6
-#define GREEN_LED 7
-#define RED_LED 8
+//Radio network includes
+#include <SPI.h>
+#include <RF24.h>
+#include <RF24Network.h>
+#include <RF24Mesh.h>
 
-#define ON  1
-#define OFF  0
-//#define SERIAL_DEBUG
-#ifdef SERIAL_DEBUG
-#define LOOP_DELAY 5000
-#else
-#define LOOP_DELAY 50
-#endif
-#define DEBOUNCE_TIME 50
-#define BUTTON_HOLD_TIME 400 //Time button is held down to increment or decrement
-#define BOOST_TIME 30*60000 //Length of time to turn on heat regardless of set temperature
-#define RTC_READ_INTERVAL 500UL
-#define TEMPERATURE_READ_INTERVAL 15000UL
-
-//Schedule and Temp settings
-#define MAX_SCHEDULES 50
-#define HYSTERSIS 0.5  //Degrees over the set temp to drive the current temp to stop output jitter
-#define SET_INTERVAL 0.1 //Amount to increase the temp by per button press
-
-#define LCD_ROWS 4
-#define LCD_COLS 20
-
-#define EEPROM_I2C_ADDR 0x50
-
-//Each schedule is: DDSSEETT
-//byte D = "0" for every day, "0x0100" for Weekday (Mon - Fri), "0x0200" for Weekend (Sat, Sun), 1 - Monday, 2 - Tuesday,....7 - Sunday
-//uint16_t SS = Start minute (0 - 1440)
-//uint16_t EE = End time minute (0 - 1440)
-//uint16_t  TT = Set temperature tenths of C, 180 = 18.0C
+#include "digi-thermostat.h"
 
 //Thermometer variables
 // Setup a oneWire instance to communicate with any OneWire devices 
@@ -62,24 +31,11 @@ uRTCLib rtc;
 //LCD
 LiquidCrystal_I2C lcd(0x27,20,4);
 
-//Struct is long word padded...
-struct SchedByElem {
-    uint16_t day;
-    uint16_t start;
-    uint16_t end;
-    uint16_t temp;
-};
-
-union SchedUnion {
-  struct SchedByElem elem;
-  byte raw[sizeof(SchedByElem)];
-};
-
-//Global and stuff to initate once
+//Global variables and stuff to initate once
 float currentTemp = -1;
 float lastScheduledTemp = 0;
 float currentSetTemp = 0;
-float degPerHour = 5.0;
+float degPerHour = 5.0; //Default heating power - 5C per hour increase
 float extAdj = 0.2;
 
 boolean heat_on = FALSE;
@@ -89,7 +45,13 @@ unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastBoostAdjTime = 0;
+unsigned long lastRunTime = 0;
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+
+//Radio stuff
+RF24 radio(RADIO_CE,RADIO_CS);
+RF24Network network(radio);
+RF24Mesh mesh(radio,network);
 
 Bounce upButton = Bounce();
 unsigned long upButtonDownTime = 0;
@@ -107,6 +69,8 @@ void setup() {
   Serial.begin(9600);
   while (!Serial); 
 #endif      
+  Serial.begin(9600);
+  while (!Serial); 
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -139,7 +103,13 @@ void setup() {
   // set up the LCD's number of columns and rows:
   lcd.init();
   lcd.backlight();
-  
+
+  //Set node id on radio mesh
+  mesh.setNodeID(MESH_NODE_ID);
+  // Connect to the mesh
+  Serial.println("Connecting to the mesh...");
+  mesh.begin();
+
   //Read schedule from EEPROM
   //Note: Max position: 32767
   //First byte is number of schedules
@@ -240,22 +210,24 @@ void loop() {
   if (upButton.update() && upButton.fell()) {
     //increase the set temp
     currentSetTemp += SET_INTERVAL;
+    upButtonDownTime = currentMillis;
     changedState = true;
   }
   if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
     //increase the set temp
-    currentSetTemp += SET_INTERVAL;
+    currentSetTemp += SET_INTERVAL * 2.0;
     upButtonDownTime = currentMillis;
     changedState = true;
   }
   if (downButton.update() && downButton.fell()) {
     //decrease the set temp
     currentSetTemp -= SET_INTERVAL;
+    downButtonDownTime = currentMillis;
     changedState = true;
   }
   if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
     //decrease the set temp
-    currentSetTemp -= SET_INTERVAL;
+    currentSetTemp -= SET_INTERVAL * 2.0;
     downButtonDownTime = currentMillis;
     changedState = true;
   }
@@ -291,7 +263,30 @@ void loop() {
   }
 
   //Check for any commands from in-station
-  
+  mesh.update();
+  while (network.available()) {
+    RF24NetworkHeader header;
+    RF24NetworkHeader respHeader;
+    Content payload;
+    Content response;
+    network.peek(header);
+    Serial.print("Received packet #");
+    Serial.println(header.type);
+    switch((byte)header.type) {
+      case (REQ_STATUS_MSG): 
+          Serial.println("Request status message");
+          network.read(header, &payload, 1); //Read message
+          response.status.currentTemp = currentTemp;
+          response.status.setTemp = currentSetTemp;
+          response.status.heatOn = (byte)heat_on;
+          response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
+          respHeader.type = STATUS_MSG;
+          respHeader.to_node = MASTER_NODE_ID;
+        break;
+    }
+//    network.read(header, &payload, sizeof(payload));
+  }
+
   //Report back current status to in-station via RF transmitter regularly
 
   //Date + Time (19chars)  OR Time to reach set temp
@@ -299,6 +294,18 @@ void loop() {
 
   if (changedState) {
     //Display current status
+    unsigned long runTime = getRunTime();
+    String runTimeStr = "Run:";
+    unsigned long threeDigit = 6000000;
+    if (runTime < threeDigit) {
+      runTimeStr += " ";
+    }
+    runTimeStr += getMinSec(runTime);
+    if ((lastRunTime < threeDigit && runTime >= threeDigit) || (lastRunTime >= threeDigit && runTime < threeDigit)) {
+      bigChangeOfState = true;
+    }
+//    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
+    lastRunTime = runTime;
     if (bigChangeOfState) {
       lcd.clear();
     }
@@ -307,8 +314,6 @@ void loop() {
     String currTempStr = String(currentTemp, 1);
     lcd.print(dateTimeStr + "   " + currTempStr + "C");
     lcd.setCursor(0, 1);
-    int runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
-    String runTimeStr = "Run: " + (boostTimer > 0 ? getMinSec(boostTimer) : getMinSec(runTime));
     lcd.print(runTimeStr + " Set:" + String(currentSetTemp, 1) + "C ");
     lcd.setCursor(0, 2);
     String boilerStatStr = heat_on ? "ON    " : "OFF   ";
@@ -323,6 +328,16 @@ void loop() {
 #endif
   delay(LOOP_DELAY); //temporary delay in loop
 
+}
+
+unsigned long getRunTime() {
+  unsigned long runTime;
+  if (boostTimer > 0) {
+    runTime = boostTimer;
+  } else {
+    runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
+  }
+  return runTime;
 }
 
 void eepromWrite(unsigned int eeaddress, byte data ) {
@@ -363,7 +378,7 @@ float getSetPoint() {
         //All days match and not found higher
           priority = 1;
           temp = sched.elem.temp; 
-          Serial.println("Set 0: " + temp);
+//          Serial.println("Set 0: " + temp);
       }
       if (sched.elem.day == 0x200 && (currDay == 6 || currDay == 7) && priority <= 2) {
         //Its the weekend and not found higher
@@ -390,16 +405,18 @@ float getSetPoint() {
 //}
 
 //Calculate the number of ms to reach set temp
-int calcRunTime(float tempNow, float tempSet, float tempExt) {
-  int noMs = 0;
-  if (tempNow < tempSe  t) {
+unsigned long calcRunTime(float tempNow, float tempSet, float tempExt) {
+  unsigned long noMs = 0;
+  if (tempNow < tempSet) {
     float deg = degPerHour;
-    if (tempExt != 100.0) {
+    if (tempExt != 100.0 && tempExt < tempNow) {
       //Reduce based on outside temp
       deg -= (tempNow - tempExt) * extAdj;
     }
-    float noHours = (tempSet - tempNow) / deg;
-    noMs = (int)(noHours * 3600 * 1000);
+    float noSecs = (tempSet - tempNow) * 3600.0 / deg;
+    noMs = (unsigned long)(noSecs * 1000);
+//    Serial.println("Set: " + String(tempSet,1) + " Now: " + String(tempNow, 1) + " Degph: " + deg + " noMs: " + noMs);
+//    Serial.println(getMinSec(noMs));
   }
   return noMs;
 }
