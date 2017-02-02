@@ -36,16 +36,19 @@ float currentTemp = -1;
 float lastScheduledTemp = 0;
 float currentSetTemp = 0;
 float degPerHour = 5.0; //Default heating power - 5C per hour increase
-float extAdj = 0.2;
+float extAdjustment = 0.2; //Weighting of difference between external and internal temp
 
 boolean heat_on = FALSE;
 byte noOfSchedules = 0;
+
+unsigned long currentMillis = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
 unsigned long boilerOnTime = 0;
-unsigned long lastBoostAdjTime = 0;
+unsigned long lastLoopTime = 0;
 unsigned long lastRunTime = 0;
+unsigned long backLightTimer = 0;
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
 //Radio stuff
@@ -63,6 +66,7 @@ unsigned long boostTimer = 0;
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 float extTemp = 100.0; //This will be set by remote command
+String motd =  String("Compiled: ") + String("__DATE__ ") + String(" __TIME__ "); //Will be set by remote command
 
 void setup() {
 #ifdef SERIAL_DEBUG
@@ -154,15 +158,16 @@ void setup() {
 
 
 void loop() {
-  unsigned long currentMillis = millis();
-  boolean changedState = false;
-  boolean bigChangeOfState = false;
+  uint8_t changedState = 0;
+  lastLoopTime = currentMillis;
+  currentMillis = millis();
+  unsigned long loopDelta = currentMillis - lastLoopTime;
 
   if (currentMillis - lastRTCRead > RTC_READ_INTERVAL) {
     //Read RTC
     rtc.refresh();
     lastRTCRead = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
 #ifdef SERIAL_DEBUG
   Serial.print(getDateStr());
@@ -172,26 +177,19 @@ void loop() {
 #endif
 
   if (boostTimer > 0) {
-    unsigned long adj = currentMillis - lastBoostAdjTime;
-    if (boostTimer > adj) {
-      boostTimer -= adj;
-      lastBoostAdjTime = currentMillis;
+    if (boostTimer > loopDelta) {
+      boostTimer -= loopDelta;
     } else {
       boostTimer = 0; 
     }
   }
-
-  //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
-  //lcd.noBacklight();
-//    lcd.backlight();
-
 
   //Read thermometer
   if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
     temp_sensor.requestTemperatures(); // Send the command to get temperatures
     currentTemp = temp_sensor.getTempCByIndex(0);
     lastTempRead = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
 #ifdef SERIAL_DEBUG
   Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
@@ -202,97 +200,189 @@ void loop() {
 #ifdef SERIAL_DEBUG
   Serial.println("Scheduled set point: " + String(currentTemp, 1));
 #endif
+
   if (lastScheduledTemp != schedTemp) {
+    //Only override set temp if there is a schedule change (cos it may have been manually set)
     currentSetTemp = schedTemp;
     lastScheduledTemp = schedTemp;
+    changedState = 1;
   }
-  //Read button inputs
-  if (upButton.update() && upButton.fell()) {
+
+  //Read switch inputs
+  changedState = readInputs(changedState);
+
+  //Check for any commands from in-station
+  changedState = checkMasterMessages(changedState);
+
+  //Report back current status to in-station via RF transmitter regularly
+
+  //If not in boost mode, turn heating on or off depending on temp
+  if (boostTimer == 0) {
+    if ((currentSetTemp > currentTemp) && !heat_on) {
+      switchHeat(true);
+      changedState = 2;
+    }
+    if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
+      //Reached set temperature, turn heating off
+      //Note: Add in hystersis to stop flip flopping
+      switchHeat(false);
+      changedState = 2;
+     }
+  }
+
+  if (changedState > 0) {
+    displayState(changedState);
+  }
+
+#ifdef SERIAL_DEBUG
+  Serial.println("End loop");
+#endif
+  delay(LOOP_DELAY); //temporary delay in loop
+
+}
+
+uint8_t readInputs(uint8_t changedState) {
+    if (upButton.update() && upButton.fell()) {
     //increase the set temp
     currentSetTemp += SET_INTERVAL;
     upButtonDownTime = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
   if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
     //increase the set temp
     currentSetTemp += SET_INTERVAL * 2.0;
     upButtonDownTime = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
   if (downButton.update() && downButton.fell()) {
     //decrease the set temp
     currentSetTemp -= SET_INTERVAL;
     downButtonDownTime = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
   if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
     //decrease the set temp
     currentSetTemp -= SET_INTERVAL * 2.0;
     downButtonDownTime = currentMillis;
-    changedState = true;
+    changedState = 1;
   }
   if (boostButton.update() && boostButton.fell()) {
     if (boostTimer == 0) {
       //turn heating on for a bit, regardless of set temp
       switchHeat(true);
       boostTimer = BOOST_TIME;
-      lastBoostAdjTime = currentMillis;
-      changedState = true;
     } else {
       //boost already running - treat as cancel boost
       boostTimer = 0;
-      changedState = true;
     }
-    bigChangeOfState = true;
+    changedState = 2;
   }
+  return changedState;
+}
 
-  if (boostTimer == 0) {
-    //Turn heating on or off depending on temp
-    if ((currentSetTemp > currentTemp) && !heat_on) {
-      switchHeat(true);
-      changedState = true;
-      bigChangeOfState = true;
-    }
-    if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
-      //Reached set temperature, turn heating off
-      //Note: Add in hystersis to stop flip flopping
-      switchHeat(false);
-      changedState = true;
-      bigChangeOfState = true;
-    }
-  }
-
-  //Check for any commands from in-station
+uint8_t checkMasterMessages(uint8_t changedState) {
   mesh.update();
   while (network.available()) {
     RF24NetworkHeader header;
     RF24NetworkHeader respHeader;
+    respHeader.to_node = MASTER_NODE_ID;
+    respHeader.type = STATUS_MSG;
     Content payload;
     Content response;
-    network.peek(header);
+    boolean sendStatus = false;
+    union SchedUnion sched;
+    network.read(header, &payload, sizeof(Content)); //Read message
     Serial.print("Received packet #");
     Serial.println(header.type);
     switch((byte)header.type) {
-      case (REQ_STATUS_MSG): 
+      case (REQ_STATUS_MSG):
           Serial.println("Request status message");
-          network.read(header, &payload, 1); //Read message
-          response.status.currentTemp = currentTemp;
-          response.status.setTemp = currentSetTemp;
-          response.status.heatOn = (byte)heat_on;
-          response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
-          respHeader.type = STATUS_MSG;
-          respHeader.to_node = MASTER_NODE_ID;
+          sendStatus = true;
+        break;
+      case (STATUS_MSG): 
+          Serial.println("Status message rx - shouldn't get this?");
+          sendStatus = true;
+        break;
+      case (SET_TEMP_MSG):
+          currentSetTemp = payload.setTemp.setTemp;
+          changedState = 1;
+          sendStatus = true;
+        break;
+      case (SET_EXT_MSG):
+          extTemp = payload.setExt.setExt;
+          changedState = 1;
+          sendStatus = true;
+        break;
+      case (ADJ_SETTIME_CONST_MSG): 
+          degPerHour = payload.adjSetTimeConstants.degPerHour;
+          extAdjustment = payload.adjSetTimeConstants.extAdjustment;
+          changedState = 1;
+          sendStatus = true;
+        break;
+      case (MOTD_MSG):
+          motd = payload.motd.motdStr; 
+          changedState = 2;
+        break;
+      case (GET_SCHEDULES_MSG):
+          //Send each schedule in the list
+          respHeader.type = SCHEDULE_MSG;
+          for (int i=0; i<noOfSchedules; i++) {
+            memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
+            response.schedule.day = sched.elem.day;
+            response.schedule.start = sched.elem.start;
+            response.schedule.end = sched.elem.end;
+            response.schedule.temp = sched.elem.temp;
+            //Send to master
+            network.write(header, &response, sizeof(Content));
+          }
+        break;
+      case (SCHEDULE_MSG):
+          //Insert schedule
+          struct SchedByElem elem;
+          elem.day = payload.schedule.day;
+          elem.start = payload.schedule.start;
+          elem.end = payload.schedule.end;
+          elem.temp = payload.schedule.temp;
+          sched.elem = elem;
+          memcpy(&schedules[noOfSchedules], &sched.raw, sizeof(SchedByElem));
+          noOfSchedules++;
+        break;
+      case (DELETE_SCHEDULE_MSG):
+          int schedToDelete = -1;
+          for (int i=0; i<noOfSchedules; i++) {
+            memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
+            //Find matching schedule
+            if (sched.elem.day == payload.schedule.day 
+               && sched.elem.start == payload.schedule.start
+               && sched.elem.end == payload.schedule.end
+               && sched.elem.temp == payload.schedule.temp) {
+                schedToDelete = i;
+            }
+          }
+          //Delete matching schedule by shuffling them up
+          for (int i=schedToDelete; i<(noOfSchedules-1); i++) {
+            memcpy(&schedules[i], &schedules[i++], sizeof(SchedByElem));
+          }
         break;
     }
-//    network.read(header, &payload, sizeof(payload));
+    if (sendStatus) {
+      response.status.currentTemp = currentTemp;
+      response.status.setTemp = currentSetTemp;
+      response.status.heatOn = (byte)heat_on;
+      response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
+      network.write(header, &response, sizeof(Content));
+    }
   }
+  return changedState;
+}
 
-  //Report back current status to in-station via RF transmitter regularly
+void displayState(uint8_t changedState) {
+    if (checkBackLight()) {
+      lcd.backlight();
+    } else {
+      lcd.noBacklight();
+    }
 
-  //Date + Time (19chars)  OR Time to reach set temp
-  //Current temp, set temp, external temp
-
-  if (changedState) {
     //Display current status
     unsigned long runTime = getRunTime();
     String runTimeStr = "Run:";
@@ -302,11 +392,11 @@ void loop() {
     }
     runTimeStr += getMinSec(runTime);
     if ((lastRunTime < threeDigit && runTime >= threeDigit) || (lastRunTime >= threeDigit && runTime < threeDigit)) {
-      bigChangeOfState = true;
+      changedState = 2;
     }
 //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
     lastRunTime = runTime;
-    if (bigChangeOfState) {
+    if (changedState > 1) {
       lcd.clear();
     }
     lcd.setCursor(0, 0);
@@ -319,15 +409,21 @@ void loop() {
     String boilerStatStr = heat_on ? "ON    " : "OFF   ";
     lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 100.0 ? "??.?" : String(extTemp, 1)) + "C");
     lcd.setCursor(0, 3);
-    lcd.print("This is the MOTD");
+    lcd.print(motd);
+}
+
+boolean checkBackLight() {
+  if (backLightTimer > 0) {
+    unsigned long loopDelta = currentMillis - lastLoopTime;
+    if (backLightTimer > loopDelta) {
+      backLightTimer -= loopDelta;
+    } else {
+      backLightTimer = 0;
+    }
   }
-
-
-#ifdef SERIAL_DEBUG
-  Serial.println("End loop");
-#endif
-  delay(LOOP_DELAY); //temporary delay in loop
-
+  //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
+  backLightTimer = BACKLIGHT_TIME;
+  return (backLightTimer > 0);  
 }
 
 unsigned long getRunTime() {
@@ -347,6 +443,16 @@ void eepromWrite(unsigned int eeaddress, byte data ) {
   Wire.write((int)(eeaddress & 0xFF)); // LSB
   Wire.write(rdata);
   Wire.endTransmission();
+}
+
+void writeSchedules() {
+  int cnt = 1;
+  for (int i=0; i<noOfSchedules; i++) {
+    for (int j=0; j<sizeof(SchedByElem); j++) {
+      eepromWrite(cnt, schedules[i][j]);
+      cnt++;
+    }
+  }
 }
 
 byte eepromRead(unsigned int eeaddress ) {
@@ -411,7 +517,7 @@ unsigned long calcRunTime(float tempNow, float tempSet, float tempExt) {
     float deg = degPerHour;
     if (tempExt != 100.0 && tempExt < tempNow) {
       //Reduce based on outside temp
-      deg -= (tempNow - tempExt) * extAdj;
+      deg -= (tempNow - tempExt) * extAdjustment;
     }
     float noSecs = (tempSet - tempNow) * 3600.0 / deg;
     noMs = (unsigned long)(noSecs * 1000);
