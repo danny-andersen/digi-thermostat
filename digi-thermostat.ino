@@ -32,11 +32,11 @@ uRTCLib rtc;
 LiquidCrystal_I2C lcd(0x27,20,4);
 
 //Global variables and stuff to initate once
-float currentTemp = -1;
-float lastScheduledTemp = 0;
-float currentSetTemp = 0;
-float degPerHour = 5.0; //Default heating power - 5C per hour increase
-float extAdjustment = 0.2; //Weighting of difference between external and internal temp
+int16_t currentTemp = 1000;
+int16_t lastScheduledTemp = 0;
+volatile int16_t currentSetTemp = 0;
+int16_t degPerHour = 50; //Default heating power - 5C per hour increase
+int16_t extAdjustment = 2; //Weighting of difference between external and internal temp
 
 boolean heat_on = FALSE;
 byte noOfSchedules = 0;
@@ -51,22 +51,26 @@ unsigned long lastRunTime = 0;
 unsigned long backLightTimer = 0;
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
+//Rotary encoder
+unsigned int rotaryA_old = 0;
+unsigned int rotaryB_new = 0;
+
 //Radio stuff
 RF24 radio(RADIO_CE,RADIO_CS);
 RF24Network network(radio);
 RF24Mesh mesh(radio,network);
 
-Bounce upButton = Bounce();
-unsigned long upButtonDownTime = 0;
-Bounce downButton = Bounce();
-unsigned long downButtonDownTime = 0;
+//Bounce upButton = Bounce();
+//unsigned long upButtonDownTime = 0;
+//Bounce downButton = Bounce();
+//unsigned long downButtonDownTime = 0;
 Bounce boostButton = Bounce();
 unsigned long boostTimer = 0;
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
-float extTemp = 100.0; //This will be set by remote command
-String motd =  String("Compiled: ") + String("__DATE__ ") + String(" __TIME__ "); //Will be set by remote command
+int16_t extTemp = 1000; //This will be set by remote command
+String motd =  "V:" + String(__DATE__ ); //Will be set by remote command
 
 void setup() {
 #ifdef SERIAL_DEBUG
@@ -80,15 +84,20 @@ void setup() {
   pinMode(RED_LED, OUTPUT);
   pinMode(RELAY, OUTPUT);
   //Digi ins
-  pinMode(UP_BUTTON, INPUT_PULLUP);
-  upButton.attach(UP_BUTTON);
-  upButton.interval(DEBOUNCE_TIME);
-  pinMode(DOWN_BUTTON, INPUT_PULLUP);
-  downButton.attach(DOWN_BUTTON);
-  downButton.interval(DEBOUNCE_TIME);
+//  pinMode(UP_BUTTON, INPUT_PULLUP);
+//  upButton.attach(UP_BUTTON);
+//  upButton.interval(DEBOUNCE_TIME);
+//  pinMode(DOWN_BUTTON, INPUT_PULLUP);
+//  downButton.attach(DOWN_BUTTON);
+//  downButton.interval(DEBOUNCE_TIME);
   pinMode(BOOST_BUTTON, INPUT_PULLUP);
   boostButton.attach(BOOST_BUTTON);
   boostButton.interval(DEBOUNCE_TIME);
+  //Rotary encoder
+  pinMode(ROTARY_A, INPUT_PULLUP); 
+  pinMode(ROTARY_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ROTARY_A), intHandleEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ROTARY_B), intHandleEncoderB, CHANGE);
   
   //turn on power indicator - set orange until initialised
   digitalWrite(RED_LED, HIGH);
@@ -96,12 +105,12 @@ void setup() {
 
   temp_sensor.begin();
   temp_sensor.requestTemperatures(); // Send the command to get temperatures
-  currentTemp = temp_sensor.getTempCByIndex(0);
+  currentTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
 
   Wire.begin();
 
 //  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
-//  rtc.set(0,19, 19, 7, 29, 1, 17);
+//  rtc.set(0,45, 15, 5, 3, 2, 17);
 //  eepromWrite(0,0x00);
   
   // set up the LCD's number of columns and rows:
@@ -112,8 +121,7 @@ void setup() {
   mesh.setNodeID(MESH_NODE_ID);
   // Connect to the mesh
   Serial.println("Connecting to the mesh...");
-  mesh.begin();
-
+  mesh.begin(MESH_DEFAULT_CHANNEL, RF24_250KBPS, 5*1000);
   //Read schedule from EEPROM
   //Note: Max position: 32767
   //First byte is number of schedules
@@ -122,7 +130,9 @@ void setup() {
   Serial.println("No of scheds: " + String(noOfSchedules, HEX));
 #endif
   if (noOfSchedules > MAX_SCHEDULES) {
-    noOfSchedules = MAX_SCHEDULES;
+    //Assume eprom corrupted
+    eepromWrite(0,0x00);
+    noOfSchedules = 0;
   }
   int cnt = 1;
   for (int i=0; i<noOfSchedules; i++) {
@@ -187,7 +197,7 @@ void loop() {
   //Read thermometer
   if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
     temp_sensor.requestTemperatures(); // Send the command to get temperatures
-    currentTemp = temp_sensor.getTempCByIndex(0);
+    currentTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
     lastTempRead = currentMillis;
     changedState = 1;
   }
@@ -241,31 +251,43 @@ void loop() {
 
 }
 
+// Interrupt on A changing state
+void intHandleEncoderA(){
+  rotaryB_new ^ rotaryA_old ? currentSetTemp += SET_INTERVAL : currentSetTemp -= SET_INTERVAL;
+  rotaryA_old=digitalRead(ROTARY_A);
+}
+
+// Interrupt on B changing state
+void intHandleEncoderB(){
+  rotaryB_new=digitalRead(ROTARY_B);
+  rotaryB_new^rotaryA_old ? currentSetTemp += SET_INTERVAL : currentSetTemp -= SET_INTERVAL;
+}
+
 uint8_t readInputs(uint8_t changedState) {
-    if (upButton.update() && upButton.fell()) {
-    //increase the set temp
-    currentSetTemp += SET_INTERVAL;
-    upButtonDownTime = currentMillis;
-    changedState = 1;
-  }
-  if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
-    //increase the set temp
-    currentSetTemp += SET_INTERVAL * 2.0;
-    upButtonDownTime = currentMillis;
-    changedState = 1;
-  }
-  if (downButton.update() && downButton.fell()) {
-    //decrease the set temp
-    currentSetTemp -= SET_INTERVAL;
-    downButtonDownTime = currentMillis;
-    changedState = 1;
-  }
-  if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
-    //decrease the set temp
-    currentSetTemp -= SET_INTERVAL * 2.0;
-    downButtonDownTime = currentMillis;
-    changedState = 1;
-  }
+//    if (upButton.update() && upButton.fell()) {
+//    //increase the set temp
+//    currentSetTemp += SET_INTERVAL;
+//    upButtonDownTime = currentMillis;
+//    changedState = 1;
+//  }
+//  if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
+//    //increase the set temp
+//    currentSetTemp += SET_INTERVAL * 2.0;
+//    upButtonDownTime = currentMillis;
+//    changedState = 1;
+//  }
+//  if (downButton.update() && downButton.fell()) {
+//    //decrease the set temp
+//    currentSetTemp -= SET_INTERVAL;
+//    downButtonDownTime = currentMillis;
+//    changedState = 1;
+//  }
+//  if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
+//    //decrease the set temp
+//    currentSetTemp -= SET_INTERVAL * 2.0;
+//    downButtonDownTime = currentMillis;
+//    changedState = 1;
+//  }
   if (boostButton.update() && boostButton.fell()) {
     if (boostTimer == 0) {
       //turn heating on for a bit, regardless of set temp
@@ -401,13 +423,13 @@ void displayState(uint8_t changedState) {
     }
     lcd.setCursor(0, 0);
     String dateTimeStr = getTimeStr();
-    String currTempStr = String(currentTemp, 1);
+    String currTempStr = String((float)(currentTemp / 10.0), 1);
     lcd.print(dateTimeStr + "   " + currTempStr + "C");
     lcd.setCursor(0, 1);
-    lcd.print(runTimeStr + " Set:" + String(currentSetTemp, 1) + "C ");
+    lcd.print(runTimeStr + " Set:" + String((float)(currentSetTemp / 10.0), 1) + "C");
     lcd.setCursor(0, 2);
     String boilerStatStr = heat_on ? "ON    " : "OFF   ";
-    lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 100.0 ? "??.?" : String(extTemp, 1)) + "C");
+    lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 1000 ? "??.?" : String((float)(extTemp / 10.0), 1)) + "C");
     lcd.setCursor(0, 3);
     lcd.print(motd);
 }
@@ -467,7 +489,7 @@ byte eepromRead(unsigned int eeaddress ) {
 }
 
   
-float getSetPoint() {
+int16_t getSetPoint() {
   //Get mins in day
   uint16_t mins = rtc.hour() * 60 + rtc.minute();
   //Find matching schedules and take one with the most specific day that matches
@@ -503,19 +525,21 @@ float getSetPoint() {
       }
     }
   }
-  return temp / 10.0;
+  return temp;
 }
 
-//String getDateStr() {
-//    return String(rtc.year()) + "/" + String(rtc.month()) + "/" + String(rtc.day(), DEC);
-//}
+#ifdef SERIAL_DEBUG
+String getDateStr() {
+    return String(rtc.year()) + "/" + String(rtc.month()) + "/" + String(rtc.day(), DEC);
+}
+#endif
 
 //Calculate the number of ms to reach set temp
-unsigned long calcRunTime(float tempNow, float tempSet, float tempExt) {
+unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
   unsigned long noMs = 0;
   if (tempNow < tempSet) {
-    float deg = degPerHour;
-    if (tempExt != 100.0 && tempExt < tempNow) {
+    int16_t deg = degPerHour;
+    if (tempExt != 1000 && tempExt < tempNow) {
       //Reduce based on outside temp
       deg -= (tempNow - tempExt) * extAdjustment;
     }
