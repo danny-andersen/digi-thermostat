@@ -38,7 +38,7 @@ volatile int16_t currentSetTemp = 0;
 int16_t degPerHour = 50; //Default heating power - 5C per hour increase
 int16_t extAdjustment = 2; //Weighting of difference between external and internal temp
 
-boolean heat_on = FALSE;
+boolean heatOn = FALSE;
 byte noOfSchedules = 0;
 
 unsigned long currentMillis = 0;
@@ -52,8 +52,10 @@ unsigned long backLightTimer = 0;
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
 //Rotary encoder
-unsigned int rotaryA_old = 0;
-unsigned int rotaryB_new = 0;
+byte rotaryA = 0;
+byte rotaryB = 0;
+unsigned long lastTriggerTimeA = 0;
+unsigned long lastTriggerTimeB = 0;
 
 //Radio stuff
 RF24 radio(RADIO_CE,RADIO_CS);
@@ -91,13 +93,19 @@ void setup() {
 //  downButton.attach(DOWN_BUTTON);
 //  downButton.interval(DEBOUNCE_TIME);
   pinMode(BOOST_BUTTON, INPUT_PULLUP);
+  digitalWrite(BOOST_BUTTON, HIGH);
   boostButton.attach(BOOST_BUTTON);
   boostButton.interval(DEBOUNCE_TIME);
+
   //Rotary encoder
   pinMode(ROTARY_A, INPUT_PULLUP); 
   pinMode(ROTARY_B, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(ROTARY_A), intHandleEncoderA, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(ROTARY_B), intHandleEncoderB, CHANGE);
+  digitalWrite(ROTARY_A, HIGH);
+  digitalWrite(ROTARY_B, HIGH);
+  rotaryA=digitalRead(ROTARY_A);
+  rotaryB=digitalRead(ROTARY_B);
+  attachInterrupt(digitalPinToInterrupt(ROTARY_A), intHandlerRotaryA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ROTARY_B), intHandlerRotaryB, CHANGE);
   
   //turn on power indicator - set orange until initialised
   digitalWrite(RED_LED, HIGH);
@@ -116,7 +124,7 @@ void setup() {
   // set up the LCD's number of columns and rows:
   lcd.init();
   lcd.backlight();
-
+  
   //Set node id on radio mesh
   mesh.setNodeID(MESH_NODE_ID);
   // Connect to the mesh
@@ -228,11 +236,11 @@ void loop() {
 
   //If not in boost mode, turn heating on or off depending on temp
   if (boostTimer == 0) {
-    if ((currentSetTemp > currentTemp) && !heat_on) {
+    if ((currentSetTemp > currentTemp) && !heatOn) {
       switchHeat(true);
       changedState = 2;
     }
-    if (heat_on && (currentTemp > (currentSetTemp + HYSTERSIS))) {
+    if (heatOn && (currentTemp > (currentSetTemp + HYSTERSIS))) {
       //Reached set temperature, turn heating off
       //Note: Add in hystersis to stop flip flopping
       switchHeat(false);
@@ -252,15 +260,29 @@ void loop() {
 }
 
 // Interrupt on A changing state
-void intHandleEncoderA(){
-  rotaryB_new ^ rotaryA_old ? currentSetTemp += SET_INTERVAL : currentSetTemp -= SET_INTERVAL;
-  rotaryA_old=digitalRead(ROTARY_A);
-}
+void intHandlerRotaryA() {
+  unsigned long t = millis();
+  if (t - lastTriggerTimeB > DEBOUNCE_TIME && t - lastTriggerTimeA > DEBOUNCE_TIME) {
+    rotaryA=digitalRead(ROTARY_A);
+    if (rotaryB) {
+      currentSetTemp = rotaryA ?  currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
+    }
+//    digitalWrite(GREEN_LED, rotaryA);
+  }
+  lastTriggerTimeA = t;
+} 
 
 // Interrupt on B changing state
-void intHandleEncoderB(){
-  rotaryB_new=digitalRead(ROTARY_B);
-  rotaryB_new^rotaryA_old ? currentSetTemp += SET_INTERVAL : currentSetTemp -= SET_INTERVAL;
+void intHandlerRotaryB() {
+  unsigned long t = millis();
+  if (t - lastTriggerTimeB > DEBOUNCE_TIME && t - lastTriggerTimeA > DEBOUNCE_TIME) {
+    rotaryB=digitalRead(ROTARY_B);
+    if(!rotaryA) { 
+      currentSetTemp = rotaryB ? currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
+    }
+//    digitalWrite(RELAY, rotaryB);
+  }
+  lastTriggerTimeB = t;
 }
 
 uint8_t readInputs(uint8_t changedState) {
@@ -390,7 +412,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
     if (sendStatus) {
       response.status.currentTemp = currentTemp;
       response.status.setTemp = currentSetTemp;
-      response.status.heatOn = (byte)heat_on;
+      response.status.heatOn = (byte)heatOn;
       response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
       network.write(header, &response, sizeof(Content));
     }
@@ -428,7 +450,7 @@ void displayState(uint8_t changedState) {
     lcd.setCursor(0, 1);
     lcd.print(runTimeStr + " Set:" + String((float)(currentSetTemp / 10.0), 1) + "C");
     lcd.setCursor(0, 2);
-    String boilerStatStr = heat_on ? "ON    " : "OFF   ";
+    String boilerStatStr = heatOn ? "ON    " : "OFF   ";
     lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 1000 ? "??.?" : String((float)(extTemp / 10.0), 1)) + "C");
     lcd.setCursor(0, 3);
     lcd.print(motd);
@@ -449,10 +471,10 @@ boolean checkBackLight() {
 }
 
 unsigned long getRunTime() {
-  unsigned long runTime;
+  unsigned long runTime = 0;
   if (boostTimer > 0) {
     runTime = boostTimer;
-  } else {
+  } else if (heatOn) {
     runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
   }
   return runTime;
@@ -596,12 +618,12 @@ void switchHeat(boolean on) {
    digitalWrite(RED_LED, LOW);
    digitalWrite(GREEN_LED, HIGH);
    digitalWrite(RELAY, HIGH);
-   heat_on = true;
+   heatOn = true;
   } else {
    digitalWrite(RED_LED, HIGH);
    digitalWrite(GREEN_LED, LOW);
    digitalWrite(RELAY, LOW);
-   heat_on = false;
+   heatOn = false;
   }
 }
 
