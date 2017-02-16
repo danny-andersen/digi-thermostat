@@ -12,7 +12,7 @@
 #define RADIO_CS 10
 
 #define MASTER_NODE_ID 0 
-#define MESH_NODE_ID 1
+#define DIGI_THERM_NODE_ID 1
 
 #define ON  1
 #define OFF  0
@@ -48,6 +48,8 @@
 #define GET_SCHEDULES_MSG  7
 #define SCHEDULE_MSG  8
 #define DELETE_SCHEDULE_MSG  9
+
+#define RESPONSE_TIMEOUT_MS 1000
 
 //Struct is long word padded...
 struct SchedByElem {

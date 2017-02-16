@@ -126,7 +126,7 @@ void setup() {
   lcd.backlight();
   
   //Set node id on radio mesh
-  mesh.setNodeID(MESH_NODE_ID);
+  mesh.setNodeID(DIGI_THERM_NODE_ID);
   // Connect to the mesh
   Serial.println("Connecting to the mesh...");
   mesh.begin(MESH_DEFAULT_CHANNEL, RF24_250KBPS, 5*1000);
@@ -377,7 +377,9 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             response.schedule.end = sched.elem.end;
             response.schedule.temp = sched.elem.temp;
             //Send to master
-            network.write(header, &response, sizeof(Content));
+            if (!network.write(respHeader, &response, sizeof(Content))) {
+              reconnect();
+            }
           }
         break;
       case (SCHEDULE_MSG):
@@ -414,10 +416,22 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       response.status.setTemp = currentSetTemp;
       response.status.heatOn = (byte)heatOn;
       response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
-      network.write(header, &response, sizeof(Content));
+      if (!network.write(respHeader, &response, sizeof(Content))) {
+        reconnect();
+      }
     }
   }
   return changedState;
+}
+
+void reconnect() {
+    if ( ! mesh.checkConnection() ) {
+      //refresh the network address
+      Serial.println("Renewing Address");
+      mesh.renewAddress();
+    } else {
+      Serial.println("Send fail, but still connected");
+    }
 }
 
 void displayState(uint8_t changedState) {

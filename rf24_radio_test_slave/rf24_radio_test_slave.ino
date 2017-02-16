@@ -11,22 +11,21 @@
 
 /****************** User Config ***************************/
 /***      Set this radio as radio number 0 or 1         ***/
-bool radioNumber = 0;
+bool radioNumber = 1;
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
-RF24 radio(7,8);
+RF24 radio(9,10);
 /**********************************************************/
 
 byte addresses[][6] = {"1Node","2Node"};
 
 // Used to control whether this node is sending or receiving
-bool role = 1; //Sending
+bool role = 0; //Listening
 
 void setup() {
   Serial.begin(115200);
   printf_begin();
   Serial.println(F("RF24/examples/GettingStarted"));
-  Serial.println(F("*** PRESS 'T' to begin transmitting to the other node"));
   
   radio.begin();
 
@@ -55,6 +54,7 @@ void loop() {
 if (role == 1)  {
     
     radio.stopListening();                                    // First, stop listening so we can talk.
+    
     
     String msg = "Radio: " + String(radioNumber)  + "Now sending";
     Serial.println(msg);
