@@ -11,9 +11,6 @@
 #define RADIO_CE 9
 #define RADIO_CS 10
 
-#define MASTER_NODE_ID 0 
-#define DIGI_THERM_NODE_ID 1
-
 #define ON  1
 #define OFF  0
 //#define SERIAL_DEBUG
@@ -39,6 +36,12 @@
 
 #define EEPROM_I2C_ADDR 0x50
 
+//Comms defines
+
+#define RADIO_CHANNEL 123
+#define MASTER_NODE_ID 0 
+#define DIGI_THERM_NODE_ID 1
+
 #define REQ_STATUS_MSG  1
 #define STATUS_MSG  2
 #define SET_TEMP_MSG  3
@@ -62,7 +65,7 @@ struct SchedByElem {
 
 union SchedUnion {
   struct SchedByElem elem;
-  byte raw[sizeof(SchedByElem)];
+  uint8_t raw[sizeof(SchedByElem)];
 };
 
 union Content {
