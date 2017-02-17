@@ -12,9 +12,8 @@
 #include <unistd.h>
 #include <RF24/RF24.h>
 #include <RF24Network.h>
-#include <RF24Mesh.h>
 
-#include "../digithermostat.h"
+#include "digi-thermostat.h"
 
 using namespace std;
 
@@ -29,7 +28,6 @@ using namespace std;
 //RPi Alternate, with SPIDEV - Note: Edit RF24/arch/BBB/spi.cpp and  set 'this->device = "/dev/spidev0.0";;' or as listed in /dev
 RF24 radio(22,0);
 RF24Network network(radio);
-RF24Mesh mesh(radio,network);
 
 
 /********************************/
@@ -45,43 +43,41 @@ int main(int argc, char** argv){
 
   // optionally, increase the delay between retries & # of retries
   radio.setRetries(15,15);
+  radio.enableDynamicPayloads();
+  radio.setDataRate(RF24_1MBPS);
+  radio.setChannel(RADIO_CHANNEL);
   // Dump the configuration of the rf unit for debugging
   radio.printDetails();
 
-  mesh.setNodeID(MASTER_NODE_ID);
-  // Connect to the mesh
-  cout << "Connecting to the mesh...";
-  mesh.begin(MESH_DEFAULT_CHANNEL, RF24_250KBPS, 60*1000);
+  // Connect to the network
+  printf("Connecting to the network...\n");
+  network.begin(RADIO_CHANNEL, MASTER_NODE_ID);
 
   while(1) {
     RF24NetworkHeader header;
-    header.to_node = MASTER_NODE_ID;
-    header.type = STATUS_REQ_MSG;
+    header.to_node = DIGI_THERM_NODE_ID;
+    header.type = REQ_STATUS_MSG;
     Content payload;
-    if (!mesh.write(header, &payload, sizeof(Content)) {
-	cout << "Failed to write status req message";
-	if (! mesh.checkConnection()) {
-	   cout << "Disconnected from mesh: Renewing Address";
-      	   mesh.renewAddress();
-	} else {
-           cout << "Send fail, but still connected";
-    }
-    unsigned long started_waiting_at = millis();
-    bool timeout = false;
-    while ( ! radio.available() && ! timeout ) {
-	if (millis() - started_waiting_at > RESPONSE_TIMEOUT_MS )
-		timeout = true;
-	delay(10);
-    }
-    if (!timeout) {
-	radio.read( &payload, sizeof(Content) );
-	cout << "Received response!";
-	printf("Current temp: %ul\n", payload.status.currentTemp); 
-	printf("Current set temp: %ul\n", payload.status.setTemp); 
-	printf("Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
-	printf("Mins to set temp: %ul\n", payload.status.minsToSet); 
+    if (!network.write(header, &payload, sizeof(Content))) {
+	printf("Failed to write status req message\n");
     } else {
-	cout << "No response received in timeout - receiver down...";
+	unsigned long started_waiting_at = millis();
+        bool timeout = false;
+        while ( ! radio.available() && ! timeout ) {
+	    if (millis() - started_waiting_at > RESPONSE_TIMEOUT_MS )
+		timeout = true;
+	    delay(10);
+        }
+        if (!timeout) {
+	    radio.read( &payload, sizeof(Content) );
+	    printf("Received response!\n");
+	    printf("Current temp: %ul\n", payload.status.currentTemp); 
+	    printf("Current set temp: %ul\n", payload.status.setTemp); 
+	    printf("Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
+	    printf("Mins to set temp: %ul\n", payload.status.minsToSet); 
+        } else {
+    	    printf("No response received in timeout - receiver down...\n");
+        }
     }
     sleep(10);
   } // forever loop

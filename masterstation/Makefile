@@ -1,23 +1,16 @@
-#############################################################################
-#
-# Makefile for librf24 examples on Linux
-#
-# License: GPL (General Public License)
-# Author:  gnulnulf <arco@appeltaart.mine.nu>
-# Date:    2013/02/07 (version 1.0)
-#
-# Description:
-# ------------
-# use make all and make install to install the examples
-#
+include Makefile.inc
 
-ifeq ($(wildcard ../Makefile.inc), )
-	$(error Configuration not found. Run ./configure first)
-endif
+PROGRAMS = masterstation
 
-include ../Makefile.inc
+SOURCES = $(PROGRAMS:=.cpp)
 
-# define all programs
-PROGRAMS = gettingstarted gettingstarted_call_response transfer pingpair_dyn
+all: $(PROGRAMS)
 
-include Makefile.examples
+$(PROGRAMS): $(SOURCES)
+	$(CXX) $(CFLAGS) $(INC_HEADER_DIR) -I.. -L$(LIB_DIR) $@.cpp $(LIBS) -o $@
+
+clean:
+	@echo "[Cleaning]"
+	rm -rf $(PROGRAMS)
+
+
