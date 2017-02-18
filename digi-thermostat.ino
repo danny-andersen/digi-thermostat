@@ -14,7 +14,7 @@
 #include <SPI.h>
 #include <RF24.h>
 #include <RF24Network.h>
-#include <RF24Mesh.h>
+#include <printf.h>
 
 #include "digi-thermostat.h"
 
@@ -60,7 +60,6 @@ unsigned long lastTriggerTimeB = 0;
 //Radio stuff
 RF24 radio(RADIO_CE,RADIO_CS);
 RF24Network network(radio);
-RF24Mesh mesh(radio,network);
 
 //Bounce upButton = Bounce();
 //unsigned long upButtonDownTime = 0;
@@ -76,10 +75,11 @@ String motd =  "V:" + String(__DATE__ ); //Will be set by remote command
 
 void setup() {
 #ifdef SERIAL_DEBUG
-  Serial.begin(9600);
+  Serial.begin(115200);
   while (!Serial); 
 #endif      
-  Serial.begin(9600);
+  Serial.begin(115200);
+  printf_begin();
   while (!Serial); 
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
@@ -125,11 +125,18 @@ void setup() {
   lcd.init();
   lcd.backlight();
   
-  //Set node id on radio mesh
-  mesh.setNodeID(DIGI_THERM_NODE_ID);
-  // Connect to the mesh
-  Serial.println("Connecting to the mesh...");
-  mesh.begin(MESH_DEFAULT_CHANNEL, RF24_250KBPS, 5*1000);
+  // Connect to the network
+  Serial.println(F("Connecting to the network..."));
+  SPI.begin();
+  radio.begin();
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.enableDynamicPayloads();
+  radio.setDataRate(RF24_1MBPS);
+  radio.setChannel(RADIO_CHANNEL);
+  delay(5);
+  network.begin(RADIO_CHANNEL, DIGI_THERM_NODE_ID);
+  radio.printDetails();
+
   //Read schedule from EEPROM
   //Note: Max position: 32767
   //First byte is number of schedules
@@ -325,19 +332,19 @@ uint8_t readInputs(uint8_t changedState) {
 }
 
 uint8_t checkMasterMessages(uint8_t changedState) {
-  mesh.update();
+  network.update();
   while (network.available()) {
     RF24NetworkHeader header;
-    RF24NetworkHeader respHeader;
-    respHeader.to_node = MASTER_NODE_ID;
-    respHeader.type = STATUS_MSG;
+    RF24NetworkHeader respHeader(MASTER_NODE_ID);
     Content payload;
     Content response;
     boolean sendStatus = false;
     union SchedUnion sched;
     network.read(header, &payload, sizeof(Content)); //Read message
-    Serial.print("Received packet #");
+    Serial.print("Received packet #:");
     Serial.println(header.type);
+    Serial.print("Header: ");
+    Serial.println(header.toString());
     switch((byte)header.type) {
       case (REQ_STATUS_MSG):
           Serial.println("Request status message");
@@ -378,7 +385,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             response.schedule.temp = sched.elem.temp;
             //Send to master
             if (!network.write(respHeader, &response, sizeof(Content))) {
-              reconnect();
+              Serial.println("Send failed");
             }
           }
         break;
@@ -416,22 +423,14 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       response.status.setTemp = currentSetTemp;
       response.status.heatOn = (byte)heatOn;
       response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
+      Serial.println("Sending status msg");
+      respHeader.type = STATUS_MSG;
       if (!network.write(respHeader, &response, sizeof(Content))) {
-        reconnect();
+        Serial.println("Send failed");
       }
     }
   }
   return changedState;
-}
-
-void reconnect() {
-    if ( ! mesh.checkConnection() ) {
-      //refresh the network address
-      Serial.println("Renewing Address");
-      mesh.renewAddress();
-    } else {
-      Serial.println("Send fail, but still connected");
-    }
 }
 
 void displayState(uint8_t changedState) {

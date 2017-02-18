@@ -38,9 +38,9 @@
 
 //Comms defines
 
-#define RADIO_CHANNEL 123
-#define MASTER_NODE_ID 0 
-#define DIGI_THERM_NODE_ID 1
+#define RADIO_CHANNEL 90
+#define MASTER_NODE_ID 00 
+#define DIGI_THERM_NODE_ID 01
 
 #define REQ_STATUS_MSG  1
 #define STATUS_MSG  2
