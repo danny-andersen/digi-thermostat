@@ -24,8 +24,8 @@
 
 //Schedule and Temp settings
 #define MAX_SCHEDULES 32
-#define HYSTERSIS 5  //10th Degrees over the set temp to drive the current temp to stop output jitter
-#define DEBOUNCE_TIME 10 //switch must be down for 10ms 
+#define HYSTERSIS 2  //10th Degrees over the set temp to drive the current temp to stop output on/off hysteris
+#define DEBOUNCE_TIME 1000 //switch must be down for 1000us 
 #define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
 #define SET_INTERVAL 1 //Amount to increase the temp by, per button press
 #define BOOST_TIME 30*60000 //Length of time to turn on heat regardless of set temperature

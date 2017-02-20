@@ -98,8 +98,8 @@ void setup() {
   boostButton.interval(DEBOUNCE_TIME);
 
   //Rotary encoder
-  pinMode(ROTARY_A, INPUT_PULLUP); 
-  pinMode(ROTARY_B, INPUT_PULLUP);
+  pinMode(ROTARY_A, INPUT); 
+  pinMode(ROTARY_B, INPUT);
   digitalWrite(ROTARY_A, HIGH);
   digitalWrite(ROTARY_B, HIGH);
   rotaryA=digitalRead(ROTARY_A);
@@ -268,26 +268,36 @@ void loop() {
 
 // Interrupt on A changing state
 void intHandlerRotaryA() {
-  unsigned long t = millis();
-  if (t - lastTriggerTimeB > DEBOUNCE_TIME && t - lastTriggerTimeA > DEBOUNCE_TIME) {
+  unsigned long t = micros();
+  if (t - lastTriggerTimeA > DEBOUNCE_TIME) {
     rotaryA=digitalRead(ROTARY_A);
-    if (rotaryB) {
-      currentSetTemp = rotaryA ?  currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
-    }
-//    digitalWrite(GREEN_LED, rotaryA);
+    //Only inc state on rising edge of A and B is off (CW rotation)
+    if (rotaryA && !rotaryB) 
+        currentSetTemp = currentSetTemp + SET_INTERVAL;
+//    if (rotaryA) {
+//      currentSetTemp = rotaryB ?  currentSetTemp - SET_INTERVAL : currentSetTemp + SET_INTERVAL;
+//    } 
+//    else {
+//      currentSetTemp = rotaryB ?  currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
+//    }
   }
   lastTriggerTimeA = t;
 } 
 
 // Interrupt on B changing state
 void intHandlerRotaryB() {
-  unsigned long t = millis();
-  if (t - lastTriggerTimeB > DEBOUNCE_TIME && t - lastTriggerTimeA > DEBOUNCE_TIME) {
+  unsigned long t = micros();
+  if (t - lastTriggerTimeB > DEBOUNCE_TIME) {
     rotaryB=digitalRead(ROTARY_B);
-    if(!rotaryA) { 
-      currentSetTemp = rotaryB ? currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
-    }
-//    digitalWrite(RELAY, rotaryB);
+    //Only inc state on rising edge of B and A is off (CCW rotation)
+    if (rotaryB && !rotaryA)
+      currentSetTemp = currentSetTemp - SET_INTERVAL; 
+//    if(rotaryB) { 
+//      currentSetTemp = rotaryA ? currentSetTemp - SET_INTERVAL : currentSetTemp + SET_INTERVAL;
+//    } 
+//    else {
+//      currentSetTemp = rotaryA ? currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
+//    }
   }
   lastTriggerTimeB = t;
 }
