@@ -6,6 +6,7 @@
  */
 
 #include <cstdlib>
+#include <sys/stat.h>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -57,6 +58,7 @@ int main(int argc, char** argv){
   printf("Connecting to the network...\n");
   network.begin(RADIO_CHANNEL, MASTER_NODE_ID);
 
+  int motdTime = 0;  
   while(1) {
     network.update();
     RF24NetworkHeader header(DIGI_THERM_NODE_ID);
@@ -87,19 +89,29 @@ int main(int argc, char** argv){
     delay(100);
     network.update();
     //Send motd
-    RF24NetworkHeader motdHeader(DIGI_THERM_NODE_ID);
-    Content motdPayload;
   
-    //std::string motd = "Hello world! %d";
-    //strncpy(&motdPayload.motd.motdStr[0], motd.c_str(), sizeof(motdPayload.motd.motdStr));
-    snprintf(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr),
-			"Hello world! %d", header.id);
-    printf("Sending motd: %s\n", motdPayload.motd.motdStr);
-    motdHeader.type = MOTD_MSG;
-    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
-	printf("Failed to write motd message\n");
-    } 
-
+    //snprintf(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr),
+    //			"Hello world! %d", header.id);
+    //Read motd file if changed
+    struct stat fileStat;
+    if(stat(MOTD_FILE,&fileStat) >= 0) {    
+	if (fileStat.st_mtime > motdTime) {
+	    motdTime = fileStat.st_mtime;
+	    FILE *fmotd;
+	    fmotd = fopen(MOTD_FILE, "r");
+	    if (fmotd != NULL) {
+		RF24NetworkHeader motdHeader(DIGI_THERM_NODE_ID);
+		Content motdPayload;
+		if (fgets(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr), fmotd) != NULL) {
+		    printf("Sending motd: %s\n", motdPayload.motd.motdStr);
+		    motdHeader.type = MOTD_MSG;
+		    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
+			printf("Failed to write motd message\n");
+		    } 
+		}
+	    }
+	}
+    }
     sleep(2);
   } // forever loop
 

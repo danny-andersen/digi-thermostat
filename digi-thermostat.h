@@ -54,6 +54,8 @@
 
 #define RESPONSE_TIMEOUT_MS 1000
 
+#define MOTD_FILE "motd.txt"
+
 //Struct is long word padded...
 struct SchedByElem {
     uint16_t day; //= "0" for every day, "0x0100" for Weekday (Mon - Fri), 
