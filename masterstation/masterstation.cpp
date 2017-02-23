@@ -66,6 +66,7 @@ int main(int argc, char** argv){
     RF24NetworkHeader header(DIGI_THERM_NODE_ID);
     header.type = REQ_STATUS_MSG;
     Content payload;
+    bool networkUp = false;
     if (!network.write(header, &payload, sizeof(Content))) {
 	printf("Failed to write status req message\n");
     } else {
@@ -79,11 +80,11 @@ int main(int argc, char** argv){
         if (!timeout) {
 	    RF24NetworkHeader rxheader;        // If so, grab it and print it out
 	    network.read(rxheader, &payload, sizeof(Content) );
-	    printf("Received response!\n");
 	    printf("Current temp: %ul\n", payload.status.currentTemp); 
 	    printf("Current set temp: %ul\n", payload.status.setTemp); 
 	    printf("Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
 	    printf("Mins to set temp: %ul\n", payload.status.minsToSet); 
+	    networkUp = true;
         } else {
     	    printf("No response received in timeout - receiver down...\n");
         }
@@ -103,10 +104,12 @@ int main(int argc, char** argv){
 		RF24NetworkHeader motdHeader(DIGI_THERM_NODE_ID);
 		Content motdPayload;
 		if (fgets(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr), fmotd) != NULL) {
+		    motdPayload.motd.motdStr[strlen(motdPayload.motd.motdStr)-1] = '\0';
 		    printf("Sending motd: %s\n", motdPayload.motd.motdStr);
 		    motdHeader.type = MOTD_MSG;
 		    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
 			printf("Failed to write motd message\n");
+			networkUp = false;
 		    } else {
 	    		motdTime = fileStat.st_mtime;
 		    }
@@ -115,7 +118,7 @@ int main(int argc, char** argv){
 	}
     }
     //Send schedules if changed
-    if (stat(SCHEDULE_FILE,&fileStat) >= 0) {    
+    if (networkUp && stat(SCHEDULE_FILE,&fileStat) >= 0) {    
         if (fileStat.st_mtime > schedSentTime) {
 	    delay(100);
 	    network.update();
@@ -135,45 +138,53 @@ int main(int argc, char** argv){
 	        ssize_t read;
 		//Read line, split by "," and then fill payload and send
 		while ((read = getline(&line, &len, fsched)) != -1) {
-		    printf("Retrieved line of length %zu :\n", read);
 		    printf("%s", line);
-		    char part[16];
+		    char part[32];
 		    int pos = strcspn(line, ",");
 		    strncpy(part, line, pos);
+		    part[pos] = '\0';
 		    if (strcmp(part, "Mon-Sun") == 0) {
-		        schedPayload.day = 0x00;
+		        schedPayload.schedule.day = 0x00;
 		    } else if (strcmp(part, "Mon-Fri") == 0) {
-		        schedPayload.day = 0x0100;
+		        schedPayload.schedule.day = 0x0100;
 		    } else if (strcmp(part, "Sat-Sun") == 0) {
-		        schedPayload.day = 0x0200;
+		        schedPayload.schedule.day = 0x0200;
 		    } else if (strcmp(part, "Mon") == 0) {
-		        schedPayload.day = 0x0001;
+		        schedPayload.schedule.day = 0x0001;
 		    } else if (strcmp(part, "Tue") == 0) {
-		        schedPayload.day = 0x0002;
+		        schedPayload.schedule.day = 0x0002;
 		    } else if (strcmp(part, "Wed") == 0) {
-		        schedPayload.day = 0x0003;
+		        schedPayload.schedule.day = 0x0003;
 		    } else if (strcmp(part, "Thu") == 0) {
-		        schedPayload.day = 0x0004;
+		        schedPayload.schedule.day = 0x0004;
 		    } else if (strcmp(part, "Fri") == 0) {
-		        schedPayload.day = 0x0005;
+		        schedPayload.schedule.day = 0x0005;
 		    } else if (strcmp(part, "Sat") == 0) {
-		        schedPayload.day = 0x0006;
+		        schedPayload.schedule.day = 0x0006;
 		    } else if (strcmp(part, "Sun") == 0) {
-		        schedPayload.day = 0x0007;
+		        schedPayload.schedule.day = 0x0007;
 		    } else {
-		       printf("Unidentified Day specified in scheduled: %s", part);
+		       printf("Unidentified Day specified in schedule: %s", part);
 		    } 
-		    line = line+pos+1;
+		    pos++;
 		    //Start and stop times must be 4 digits
-		    strncpy(part, line, 2);
-		    int hours = String(part);
-		    line = line+2;
-		    strncpy(part, line, 2);
-		    schedPayload.start = hours * 60 + String(part);
-		    printf("Day: %x, Start: %d", schedPayload.day, schedPayload.start);
-	        }
+		    int shours, smins, ehours, emins;
+		    float temp;
+		    sscanf(&line[pos], "%2d%2d,%2d%2d,%f",&shours,&smins,&ehours,&emins,&temp);
+		    schedPayload.schedule.start = shours * 60 + smins;
+		    schedPayload.schedule.end = ehours * 60 + emins;
+		    schedPayload.schedule.temp = temp * 10;
+		    printf("Day: %x, Start: %d, End: %d, Temp: %d\n", schedPayload.schedule.day, schedPayload.schedule.start, schedPayload.schedule.end, schedPayload.schedule.temp);
+		    delay(100);
+		    network.update();
+	    	    RF24NetworkHeader header(DIGI_THERM_NODE_ID);
+	    	    header.type = SCHEDULE_MSG;
+	    	    if (!network.write(header, &schedPayload, sizeof(Content))) {
+			printf("Failed to send new schedule message\n");
+	            }
+		}
+		free(line);
 	    }
-		
 	}
     }
     //time_t mytime;
