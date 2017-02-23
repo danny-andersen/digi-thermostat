@@ -7,10 +7,12 @@
 
 #include <cstdlib>
 #include <sys/stat.h>
+#include <stdio.h>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <unistd.h>
+#include <time.h>
 #include <RF24/RF24.h>
 #include <RF24Network.h>
 
@@ -45,7 +47,6 @@ int main(int argc, char** argv){
   // Setup and configure rf radio
   radio.begin();
 
-  // optionally, increase the delay between retries & # of retries
 //  radio.setRetries(400UL,1);
   radio.setPALevel(RF24_PA_HIGH);
   radio.enableDynamicPayloads();
@@ -59,6 +60,7 @@ int main(int argc, char** argv){
   network.begin(RADIO_CHANNEL, MASTER_NODE_ID);
 
   int motdTime = 0;  
+  int schedSentTime = 0;  
   while(1) {
     network.update();
     RF24NetworkHeader header(DIGI_THERM_NODE_ID);
@@ -86,17 +88,15 @@ int main(int argc, char** argv){
     	    printf("No response received in timeout - receiver down...\n");
         }
     }
-    delay(100);
-    network.update();
     //Send motd
-  
     //snprintf(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr),
     //			"Hello world! %d", header.id);
     //Read motd file if changed
     struct stat fileStat;
     if(stat(MOTD_FILE,&fileStat) >= 0) {    
-	if (fileStat.st_mtime > motdTime) {
-	    motdTime = fileStat.st_mtime;
+        if (fileStat.st_mtime > motdTime) {
+	    delay(100);
+	    network.update();
 	    FILE *fmotd;
 	    fmotd = fopen(MOTD_FILE, "r");
 	    if (fmotd != NULL) {
@@ -107,11 +107,77 @@ int main(int argc, char** argv){
 		    motdHeader.type = MOTD_MSG;
 		    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
 			printf("Failed to write motd message\n");
-		    } 
+		    } else {
+	    		motdTime = fileStat.st_mtime;
+		    }
 		}
 	    }
 	}
     }
+    //Send schedules if changed
+    if (stat(SCHEDULE_FILE,&fileStat) >= 0) {    
+        if (fileStat.st_mtime > schedSentTime) {
+	    delay(100);
+	    network.update();
+	    schedSentTime = fileStat.st_mtime;
+	    //We are not sure which has changed, so delete all schedules
+	    RF24NetworkHeader schedHeader(DIGI_THERM_NODE_ID);
+  	    Content schedPayload;
+	    schedHeader.type = DELETE_ALL_SCHEDULES_MSG;
+	    if (!network.write(schedHeader, &schedPayload, sizeof(Content))) {
+		printf("Failed to send delete schedule message\n");
+	    } else {
+	        //Send schedules, one at a time
+	    	FILE *fsched;
+	    	fsched = fopen(SCHEDULE_FILE, "r");
+	        char * line = NULL;
+	        size_t len = 0;
+	        ssize_t read;
+		//Read line, split by "," and then fill payload and send
+		while ((read = getline(&line, &len, fsched)) != -1) {
+		    printf("Retrieved line of length %zu :\n", read);
+		    printf("%s", line);
+		    char part[16];
+		    int pos = strcspn(line, ",");
+		    strncpy(part, line, pos);
+		    if (strcmp(part, "Mon-Sun") == 0) {
+		        schedPayload.day = 0x00;
+		    } else if (strcmp(part, "Mon-Fri") == 0) {
+		        schedPayload.day = 0x0100;
+		    } else if (strcmp(part, "Sat-Sun") == 0) {
+		        schedPayload.day = 0x0200;
+		    } else if (strcmp(part, "Mon") == 0) {
+		        schedPayload.day = 0x0001;
+		    } else if (strcmp(part, "Tue") == 0) {
+		        schedPayload.day = 0x0002;
+		    } else if (strcmp(part, "Wed") == 0) {
+		        schedPayload.day = 0x0003;
+		    } else if (strcmp(part, "Thu") == 0) {
+		        schedPayload.day = 0x0004;
+		    } else if (strcmp(part, "Fri") == 0) {
+		        schedPayload.day = 0x0005;
+		    } else if (strcmp(part, "Sat") == 0) {
+		        schedPayload.day = 0x0006;
+		    } else if (strcmp(part, "Sun") == 0) {
+		        schedPayload.day = 0x0007;
+		    } else {
+		       printf("Unidentified Day specified in scheduled: %s", part);
+		    } 
+		    line = line+pos+1;
+		    //Start and stop times must be 4 digits
+		    strncpy(part, line, 2);
+		    int hours = String(part);
+		    line = line+2;
+		    strncpy(part, line, 2);
+		    schedPayload.start = hours * 60 + String(part);
+		    printf("Day: %x, Start: %d", schedPayload.day, schedPayload.start);
+	        }
+	    }
+		
+	}
+    }
+    //time_t mytime;
+    //mytime = time(NULL);
     sleep(2);
   } // forever loop
 

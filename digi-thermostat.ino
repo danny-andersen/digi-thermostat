@@ -157,16 +157,7 @@ void setup() {
     }
   }
   if (noOfSchedules == 0) {
-    //Add a default schedule - in mem only
-    struct SchedByElem elem;
-    elem.day = 0;
-    elem.start = 0;
-    elem.end = 1440;
-    elem.temp = 130;
-    union SchedUnion sched;
-    sched.elem = elem;
-    memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
-    noOfSchedules = 1;
+    addDefaultSchedule();
   }
   //Get the time and current set temp
   rtc.refresh();
@@ -341,6 +332,19 @@ uint8_t readInputs(uint8_t changedState) {
   return changedState;
 }
 
+void addDefaultSchedule() {
+  //Add a default schedule - in mem only
+  struct SchedByElem elem;
+  elem.day = 0;
+  elem.start = 0;
+  elem.end = 1440;
+  elem.temp = 130;
+  union SchedUnion sched;
+  sched.elem = elem;
+  memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
+  noOfSchedules = 1;
+}
+
 uint8_t checkMasterMessages(uint8_t changedState) {
   network.update();
   while (network.available()) {
@@ -409,6 +413,14 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           sched.elem = elem;
           memcpy(&schedules[noOfSchedules], &sched.raw, sizeof(SchedByElem));
           noOfSchedules++;
+          writeSchedule(noOfSchedules);
+          //Write number of schedules at start address
+          eepromWrite(0, noOfSchedules);
+        break;
+      case (DELETE_ALL_SCHEDULES_MSG):
+          noOfSchedules = 0;
+          eepromWrite(0, noOfSchedules);
+          addDefaultSchedule();
         break;
       case (DELETE_SCHEDULE_MSG):
           int schedToDelete = -1;
@@ -512,13 +524,12 @@ void eepromWrite(unsigned int eeaddress, byte data ) {
   Wire.endTransmission();
 }
 
-void writeSchedules() {
-  int cnt = 1;
-  for (int i=0; i<noOfSchedules; i++) {
-    for (int j=0; j<sizeof(SchedByElem); j++) {
-      eepromWrite(cnt, schedules[i][j]);
+void writeSchedule(int schedNum) {
+  int cnt;
+  cnt = 1 + ((schedNum - 1) * sizeof(SchedByElem));
+  for (int j=0; j<sizeof(SchedByElem); j++) {
+      eepromWrite(cnt, schedules[schedNum][j]);
       cnt++;
-    }
   }
 }
 
