@@ -57,6 +57,7 @@
 #define RESPONSE_TIMEOUT_MS 1000
 
 #define MOTD_FILE "motd.txt"
+#define SCHEDULE_FILE "schedule.txt"
 
 //Struct is long word padded...
 struct SchedByElem {
