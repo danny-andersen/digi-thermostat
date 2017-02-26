@@ -45,6 +45,7 @@ unsigned long currentMillis = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastInStationUpdate = 0;
+unsigned long lastGetSched = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long lastRunTime = 0;
@@ -126,7 +127,7 @@ void setup() {
   lcd.backlight();
   
   // Connect to the network
-  Serial.println(F("Connecting to the network..."));
+//  Serial.println(F("Connecting to the network..."));
   SPI.begin();
   radio.begin();
   radio.setPALevel(RF24_PA_HIGH);
@@ -135,7 +136,7 @@ void setup() {
   radio.setChannel(RADIO_CHANNEL);
   delay(5);
   network.begin(RADIO_CHANNEL, DIGI_THERM_NODE_ID);
-  radio.printDetails();
+//  radio.printDetails();
 
   //Read schedule from EEPROM
   //Note: Max position: 32767
@@ -144,6 +145,7 @@ void setup() {
 #ifdef SERIAL_DEBUG
   Serial.println("No of scheds: " + String(noOfSchedules, HEX));
 #endif
+  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
   if (noOfSchedules > MAX_SCHEDULES) {
     //Assume eprom corrupted
     eepromWrite(0,0x00);
@@ -159,6 +161,7 @@ void setup() {
   if (noOfSchedules == 0) {
     addDefaultSchedule();
   }
+  
   //Get the time and current set temp
   rtc.refresh();
   lastScheduledTemp = getSetPoint();
@@ -210,18 +213,20 @@ void loop() {
 #ifdef SERIAL_DEBUG
   Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 #endif
-    
+ 
   //Retreive current set point in schedule
-  float schedTemp = getSetPoint();
+  if (currentMillis - lastGetSched > SCHED_CHECK_INTERVAL) {
+    float schedTemp = getSetPoint();
 #ifdef SERIAL_DEBUG
-  Serial.println("Scheduled set point: " + String(currentTemp, 1));
+    Serial.println("Scheduled set point: " + String(currentTemp, 1));
 #endif
-
-  if (lastScheduledTemp != schedTemp) {
-    //Only override set temp if there is a schedule change (cos it may have been manually set)
-    currentSetTemp = schedTemp;
-    lastScheduledTemp = schedTemp;
-    changedState = 1;
+  
+    if (lastScheduledTemp != schedTemp) {
+      //Only override set temp if there is a schedule change (cos it may have been manually set)
+      currentSetTemp = schedTemp;
+      lastScheduledTemp = schedTemp;
+      changedState = 1;
+    }
   }
 
   //Read switch inputs
@@ -399,8 +404,9 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             response.schedule.temp = sched.elem.temp;
             //Send to master
             if (!network.write(respHeader, &response, sizeof(Content))) {
-              Serial.println("Send failed");
+              Serial.println("Send of sched failed");
             }
+            delay(100);
           }
         break;
       case (SCHEDULE_MSG):
@@ -413,7 +419,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           sched.elem = elem;
           memcpy(&schedules[noOfSchedules], &sched.raw, sizeof(SchedByElem));
           noOfSchedules++;
-          writeSchedule(noOfSchedules);
+          writeSchedule(noOfSchedules, &sched.raw[0]);
           //Write number of schedules at start address
           eepromWrite(0, noOfSchedules);
         break;
@@ -423,7 +429,8 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           addDefaultSchedule();
         break;
       case (DELETE_SCHEDULE_MSG):
-          int schedToDelete = -1;
+          int schedToDelete;
+          schedToDelete = noOfSchedules+1;
           for (int i=0; i<noOfSchedules; i++) {
             memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
             //Find matching schedule
@@ -439,6 +446,17 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             memcpy(&schedules[i], &schedules[i++], sizeof(SchedByElem));
           }
         break;
+      case (SET_DATE_TIME_MSG):
+        //  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
+        rtc.set(payload.dateTime.sec,
+                payload.dateTime.min, 
+                payload.dateTime.hour, 
+                payload.dateTime.dayOfWeek, 
+                payload.dateTime.dayOfMonth, 
+                payload.dateTime.month, 
+                payload.dateTime.year);
+        break;
+
     }
     if (sendStatus) {
       response.status.currentTemp = currentTemp;
@@ -515,6 +533,15 @@ unsigned long getRunTime() {
   return runTime;
 }
 
+void writeSchedule(int schedNum, byte * sched) {
+  int cnt;
+  cnt = 1 + ((schedNum - 1) * sizeof(SchedByElem));
+  for (int j=0; j<sizeof(SchedByElem); j++) {
+      eepromWrite(cnt, *sched++);
+      cnt++;
+  }
+}
+
 void eepromWrite(unsigned int eeaddress, byte data ) {
   int rdata = data;
   Wire.beginTransmission(EEPROM_I2C_ADDR);
@@ -522,15 +549,6 @@ void eepromWrite(unsigned int eeaddress, byte data ) {
   Wire.write((int)(eeaddress & 0xFF)); // LSB
   Wire.write(rdata);
   Wire.endTransmission();
-}
-
-void writeSchedule(int schedNum) {
-  int cnt;
-  cnt = 1 + ((schedNum - 1) * sizeof(SchedByElem));
-  for (int j=0; j<sizeof(SchedByElem); j++) {
-      eepromWrite(cnt, schedules[schedNum][j]);
-      cnt++;
-  }
 }
 
 byte eepromRead(unsigned int eeaddress ) {
@@ -551,7 +569,7 @@ int16_t getSetPoint() {
   //Find matching schedules and take one with the most specific day that matches
   union SchedUnion sched;
   int priority = 0;
-  int temp = 0;
+  int temp = 90;
   int currDay = rtc.dayOfWeek();
   for (int i=0; i<noOfSchedules; i++) {
     memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));

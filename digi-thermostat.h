@@ -21,6 +21,8 @@
 #endif
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL
+#define SCHED_CHECK_INTERVAL 1000UL
+#define SEND_TIME_INTERVAL 300UL //Send time from masterstation every 300 secs
 
 //Schedule and Temp settings
 #define MAX_SCHEDULES 32
@@ -52,12 +54,14 @@
 #define SCHEDULE_MSG  8
 #define DELETE_ALL_SCHEDULES_MSG  9
 #define DELETE_SCHEDULE_MSG  10
-#define SET_DATE_TIME  11
+#define SET_DATE_TIME_MSG  11
 
 #define RESPONSE_TIMEOUT_MS 1000
 
 #define MOTD_FILE "motd.txt"
 #define SCHEDULE_FILE "schedule.txt"
+#define EXTTEMP_FILE "setExtTemp.txt"
+#define SET_TEMP_FILE "setTemp.txt"
 
 //Struct is long word padded...
 struct SchedByElem {
@@ -93,6 +97,15 @@ union Content {
     struct MOTD {
       char motdStr[64]; //Message of the day, having max of 64 chars
     } motd;
+    struct DateTimeStruct {
+      uint8_t sec;
+      uint8_t min;
+      uint8_t hour;
+      uint8_t dayOfWeek;
+      uint8_t dayOfMonth;
+      uint8_t month;
+      uint8_t year;
+    } dateTime;
     SchedByElem schedule; //supports delete, insert, retreive. 
     //Note no update: schedule is an exact match and must be deleted and inserted to update
 };
