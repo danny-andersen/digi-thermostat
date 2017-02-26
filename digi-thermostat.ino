@@ -455,6 +455,11 @@ uint8_t checkMasterMessages(uint8_t changedState) {
                 payload.dateTime.dayOfMonth, 
                 payload.dateTime.month, 
                 payload.dateTime.year);
+        Serial.println("Rx Time: " + payload.dateTime.hour + 
+                    payload.dateTime.min + payload.dateTime.sec);
+        rtc.refresh();
+        Serial.println("Clk Time: " + rtc.hour() + 
+                    rtc.minute() + rtc.second());
         break;
 
     }
@@ -582,12 +587,12 @@ int16_t getSetPoint() {
           temp = sched.elem.temp; 
 //          Serial.println("Set 0: " + temp);
       }
-      if (sched.elem.day == 0x200 && (currDay == 6 || currDay == 7) && priority <= 2) {
+      if (sched.elem.day == 0x200 && (currDay == 7 || currDay == 1) && priority <= 2) {
         //Its the weekend and not found higher
           priority = 2;
           temp = sched.elem.temp; 
       }
-      if (sched.elem.day == 0x100 && (currDay >= 1 || currDay < 6) && priority <= 2) {
+      if (sched.elem.day == 0x100 && (currDay >= 2 || currDay <= 6) && priority <= 2) {
         //Its a weekday and not found higher
           priority = 2;
           temp = sched.elem.temp; 
