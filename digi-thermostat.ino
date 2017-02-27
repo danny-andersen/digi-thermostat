@@ -48,8 +48,9 @@ unsigned long lastInStationUpdate = 0;
 unsigned long lastGetSched = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
+unsigned long loopDelta = 0;
 unsigned long lastRunTime = 0;
-unsigned long backLightTimer = 0;
+unsigned long backLightTimer = BACKLIGHT_TIME;
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 
 //Rotary encoder
@@ -172,7 +173,6 @@ void setup() {
 #endif
   //Turn power led RED to indicate running
   digitalWrite(GREEN_LED, LOW);
-  lcd.backlight();
 }
 
 
@@ -180,7 +180,7 @@ void loop() {
   uint8_t changedState = 0;
   lastLoopTime = currentMillis;
   currentMillis = millis();
-  unsigned long loopDelta = currentMillis - lastLoopTime;
+  loopDelta = currentMillis - lastLoopTime;
 
   if (currentMillis - lastRTCRead > RTC_READ_INTERVAL) {
     //Read RTC
@@ -516,16 +516,19 @@ void displayState(uint8_t changedState) {
 
 boolean checkBackLight() {
   if (backLightTimer > 0) {
-    unsigned long loopDelta = currentMillis - lastLoopTime;
     if (backLightTimer > loopDelta) {
       backLightTimer -= loopDelta;
     } else {
       backLightTimer = 0;
     }
   }
-  //Check PIR sensor -> if someone near turn on blacklight for 30 seconds
-  backLightTimer = BACKLIGHT_TIME;
-  return (backLightTimer > 0);  
+  //PIR set to repeat trigger so if output is high then set backLightTimer to BACKLIGHT_TIME
+  //This keeps the backlight on LCD until people have left the area
+  int pirValue = analogRead(PIR_PIN);
+  if (pirValue >= ANALOGUE_HIGH) {
+    backLightTimer = BACKLIGHT_TIME;
+  }
+  return (backLightTimer > 0);
 }
 
 unsigned long getRunTime() {

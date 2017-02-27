@@ -11,23 +11,22 @@
 #define RADIO_CE 9
 #define RADIO_CS 10
 
+#define PIR_PIN A0 //Analogue 0
+
 #define ON  1
 #define OFF  0
 //#define SERIAL_DEBUG
-#ifdef SERIAL_DEBUG
-#define LOOP_DELAY 5000
-#else
 #define LOOP_DELAY 50
-#endif
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL
 #define SCHED_CHECK_INTERVAL 1000UL
 #define SEND_TIME_INTERVAL 300UL //Send time from masterstation every 300 secs
 
+#define ANALOGUE_HIGH 600
 //Schedule and Temp settings
 #define MAX_SCHEDULES 32
 #define HYSTERSIS 2  //10th Degrees over the set temp to drive the current temp to stop output on/off hysteris
-#define DEBOUNCE_TIME 1000 //switch must be down for 1000us 
+#define DEBOUNCE_TIME 200 //switch must be down for 1000us 
 #define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
 #define SET_INTERVAL 1 //Amount to increase the temp by, per button press
 #define BOOST_TIME 30*60000 //Length of time to turn on heat regardless of set temperature
