@@ -21,10 +21,11 @@
 #define TEMPERATURE_READ_INTERVAL 15000UL
 #define SCHED_CHECK_INTERVAL 1000UL
 #define SEND_TIME_INTERVAL 300UL //Send time from masterstation every 300 secs
+#define SCROLL_INTERVAL 300UL //Speed at which to scroll message (char shifted left by one)
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings
-#define MAX_SCHEDULES 32
+#define MAX_SCHEDULES 18
 #define HYSTERSIS 2  //10th Degrees over the set temp to drive the current temp to stop output on/off hysteris
 #define DEBOUNCE_TIME 200 //switch must be down for 1000us 
 #define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
@@ -62,6 +63,8 @@
 #define EXTTEMP_FILE "setExtTemp.txt"
 #define SET_TEMP_FILE "setTemp.txt"
 
+#define MAX_MOTD_SIZE 64
+
 //Struct is long word padded...
 struct SchedByElem {
     uint16_t day; //= "0" for every day, "0x0100" for Weekday (Mon - Fri), 
@@ -94,7 +97,7 @@ union Content {
       int16_t extAdjustment; //in tenths
     } adjSetTimeConstants;
     struct MOTD {
-      char motdStr[64]; //Message of the day, having max of 64 chars
+      char motdStr[MAX_MOTD_SIZE]; //Message of the day, having max of 64 chars
     } motd;
     struct DateTimeStruct {
       uint8_t sec;

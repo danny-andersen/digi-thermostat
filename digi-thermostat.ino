@@ -48,10 +48,11 @@ unsigned long lastInStationUpdate = 0;
 unsigned long lastGetSched = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
+unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
 unsigned long lastRunTime = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
-char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
+char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 //Rotary encoder
 byte rotaryA = 0;
@@ -73,7 +74,9 @@ unsigned long boostTimer = 0;
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 int16_t extTemp = 1000; //This will be set by remote command
-String motd =  "V:" + String(__DATE__ ); //Will be set by remote command
+char motd[64]; //Will be set by remote command
+char motdScrolled[LCD_COLS+1];
+int8_t scrollPos = 0;
 
 void setup() {
 #ifdef SERIAL_DEBUG
@@ -162,7 +165,8 @@ void setup() {
   if (noOfSchedules == 0) {
     addDefaultSchedule();
   }
-  
+  String m = String("V:" + String(__DATE__ ) + " S:" + noOfSchedules);
+  strcpy(motd, &m[0]);
   //Get the time and current set temp
   rtc.refresh();
   lastScheduledTemp = getSetPoint();
@@ -261,6 +265,31 @@ void loop() {
     displayState(changedState);
   }
 
+  if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > SCROLL_INTERVAL) {
+    //Need to scroll the 4th line of the display 
+    lastScrollTime = currentMillis;
+    int charsToCopy = 20;
+    int frontChars = 0;
+    if (scrollPos + LCD_COLS > strlen(motd) - 1) {
+      charsToCopy = strlen(motd) - scrollPos;
+      frontChars = 20 - charsToCopy;
+    }
+    strncpy(&motdScrolled[0], &motd[scrollPos], charsToCopy);
+    if (frontChars > 0) {
+       strncpy(&motdScrolled[charsToCopy],&motd[0], frontChars);
+    }
+    motdScrolled[LCD_COLS] = '\0';
+    lcd.setCursor(0, 3);
+    lcd.print(motdScrolled);
+//    Serial.println(motdScrolled);
+    if (charsToCopy <= 0) {
+      scrollPos = 0;
+    } else {
+      scrollPos += 1;
+    }
+    
+  }
+  
 #ifdef SERIAL_DEBUG
   Serial.println("End loop");
 #endif
@@ -381,12 +410,12 @@ uint8_t checkMasterMessages(uint8_t changedState) {
         break;
       case (SET_TEMP_MSG):
           currentSetTemp = payload.setTemp.setTemp;
-          changedState = 1;
+          changedState = 2;
           sendStatus = true;
         break;
       case (SET_EXT_MSG):
           extTemp = payload.setExt.setExt;
-          changedState = 1;
+          changedState = 2;
           sendStatus = true;
         break;
       case (ADJ_SETTIME_CONST_MSG): 
@@ -396,7 +425,20 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           sendStatus = true;
         break;
       case (MOTD_MSG):
-          motd = payload.motd.motdStr; 
+          strcpy(&motd[0], &payload.motd.motdStr[0]);
+          uint8_t msglen;
+          msglen = strlen(motd);
+          if (msglen > MAX_MOTD_SIZE - 3) {
+            msglen = MAX_MOTD_SIZE - 3;
+          }
+          if (msglen > LCD_COLS) {
+            //Message will scroll so add ... to delimit wrap around
+            motd[msglen] = '.';
+            motd[msglen+1] = '.';
+            motd[msglen+2] = '.';
+            motd[msglen+3] = '\0';
+          }
+          Serial.println(motd);
           changedState = 2;
         break;
       case (GET_SCHEDULES_MSG):
@@ -509,9 +551,19 @@ void displayState(uint8_t changedState) {
     lcd.print(runTimeStr + " Set:" + String((float)(currentSetTemp / 10.0), 1) + "C");
     lcd.setCursor(0, 2);
     String boilerStatStr = heatOn ? "ON    " : "OFF   ";
-    lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 1000 ? "??.?" : String((float)(extTemp / 10.0), 1)) + "C");
-    lcd.setCursor(0, 3);
-    if (motd.length() <= LCD_COLS) {
+    String extTempStr = "??.?C";
+    if (extTemp != 1000) {
+       if (extTemp >= 100 || extTemp < 0) {
+          extTempStr = String((float)(extTemp / 10.0), 1) + "C";
+       } else if (extTemp != 0) {
+          extTempStr = "0" + String((float)(extTemp / 10.0), 1) + "C";
+       } else {
+          extTempStr = " 0.0C";
+       }
+    }
+    lcd.print("Heat:" + boilerStatStr + "Ext:" + extTempStr);
+    if (strlen(motd) <= LCD_COLS) {
+      lcd.setCursor(0, 3);
       lcd.print(motd); //Only print here if motd fits, otherwise needs to scroll
     }
 }
