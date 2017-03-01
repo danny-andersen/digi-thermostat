@@ -31,3 +31,8 @@
 # Debug files
 *.dSYM/
 *.su
+
+#Working files
+bbc-weather.html
+motd.txt
+setExtTemp.txt

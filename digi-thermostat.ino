@@ -251,6 +251,12 @@ void loop() {
      }
   }
 
+  if (checkBackLight()) {
+    lcd.backlight();
+  } else {
+    lcd.noBacklight();
+  }
+
   if (changedState > 0) {
     displayState(changedState);
   }
@@ -479,12 +485,6 @@ uint8_t checkMasterMessages(uint8_t changedState) {
 }
 
 void displayState(uint8_t changedState) {
-    if (checkBackLight()) {
-      lcd.backlight();
-    } else {
-      lcd.noBacklight();
-    }
-
     //Display current status
     unsigned long runTime = getRunTime();
     String runTimeStr = "Run:";
@@ -511,7 +511,9 @@ void displayState(uint8_t changedState) {
     String boilerStatStr = heatOn ? "ON    " : "OFF   ";
     lcd.print("Heat:" + boilerStatStr + "Ext:" + (extTemp == 1000 ? "??.?" : String((float)(extTemp / 10.0), 1)) + "C");
     lcd.setCursor(0, 3);
-    lcd.print(motd);
+    if (motd.length() <= LCD_COLS) {
+      lcd.print(motd); //Only print here if motd fits, otherwise needs to scroll
+    }
 }
 
 boolean checkBackLight() {
