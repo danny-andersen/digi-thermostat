@@ -101,6 +101,7 @@ union Content {
     } adjSetTimeConstants;
     struct MOTD {
       char motdStr[MAX_MOTD_SIZE]; //Message of the day, having max of 64 chars
+      unsigned long expiry; //Number of millis after which message expires
     } motd;
     struct DateTimeStruct {
       uint8_t sec;

@@ -52,6 +52,8 @@ unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
 unsigned long lastRunTime = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
+unsigned long motdExpiryTimer = 0;
+
 char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 
 //Rotary encoder
@@ -74,7 +76,8 @@ unsigned long boostTimer = 0;
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 int16_t extTemp = 1000; //This will be set by remote command
-char motd[64]; //Will be set by remote command
+char motd[MAX_MOTD_SIZE]; //Will be set by remote command
+char defaultMotd[] = "V:"__DATE__" S:";
 char motdScrolled[LCD_COLS+1];
 int8_t scrollPos = 0;
 
@@ -165,8 +168,9 @@ void setup() {
   if (noOfSchedules == 0) {
     addDefaultSchedule();
   }
-  String m = String("V:" + String(__DATE__ ) + " S:" + noOfSchedules);
-  strcpy(motd, &m[0]);
+
+  setDefaultMotd();
+  
   //Get the time and current set temp
   rtc.refresh();
   lastScheduledTemp = getSetPoint();
@@ -253,6 +257,16 @@ void loop() {
       switchHeat(false);
       changedState = 2;
      }
+  }
+
+  //Check if motd has expired
+  if (motdExpiryTimer > 0) {
+    if (motdExpiryTimer > loopDelta) {
+      motdExpiryTimer -= loopDelta;
+    } else {
+      motdExpiryTimer = 0;
+      setDefaultMotd();
+    }
   }
 
   if (checkBackLight()) {
@@ -395,17 +409,13 @@ uint8_t checkMasterMessages(uint8_t changedState) {
     boolean sendStatus = false;
     union SchedUnion sched;
     network.read(header, &payload, sizeof(Content)); //Read message
-    Serial.print("Received packet #:");
-    Serial.println(header.type);
     Serial.print("Header: ");
     Serial.println(header.toString());
     switch((byte)header.type) {
       case (REQ_STATUS_MSG):
-          Serial.println("Request status message");
           sendStatus = true;
         break;
       case (STATUS_MSG): 
-          Serial.println("Status message rx - shouldn't get this?");
           sendStatus = true;
         break;
       case (SET_TEMP_MSG):
@@ -425,20 +435,21 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           sendStatus = true;
         break;
       case (MOTD_MSG):
-          strcpy(&motd[0], &payload.motd.motdStr[0]);
+          motdExpiryTimer = payload.motd.expiry;
+          motd[0] = '\0';
+          strncat(&motd[0], &payload.motd.motdStr[0], MAX_MOTD_SIZE);
           uint8_t msglen;
           msglen = strlen(motd);
-          if (msglen > MAX_MOTD_SIZE - 3) {
-            msglen = MAX_MOTD_SIZE - 3;
-          }
           if (msglen > LCD_COLS) {
             //Message will scroll so add ... to delimit wrap around
+            if (msglen > MAX_MOTD_SIZE - 3) {
+              msglen = MAX_MOTD_SIZE - 3;
+            }
             motd[msglen] = '.';
             motd[msglen+1] = '.';
             motd[msglen+2] = '.';
             motd[msglen+3] = '\0';
           }
-          Serial.println(motd);
           changedState = 2;
         break;
       case (GET_SCHEDULES_MSG):
@@ -503,11 +514,11 @@ uint8_t checkMasterMessages(uint8_t changedState) {
                 payload.dateTime.dayOfMonth, 
                 payload.dateTime.month, 
                 payload.dateTime.year);
-        Serial.println("Rx Time: " + payload.dateTime.hour + 
-                    payload.dateTime.min + payload.dateTime.sec);
+//        Serial.println("Rx Time: " + payload.dateTime.hour + 
+//                    payload.dateTime.min + payload.dateTime.sec);
         rtc.refresh();
-        Serial.println("Clk Time: " + rtc.hour() + 
-                    rtc.minute() + rtc.second());
+//        Serial.println("Clk Time: " + rtc.hour() + 
+//                    rtc.minute() + rtc.second());
         break;
 
     }
@@ -739,5 +750,12 @@ void switchHeat(boolean on) {
    digitalWrite(RELAY, LOW);
    heatOn = false;
   }
+}
+
+void setDefaultMotd() {
+  //Set up default motd string;
+  motd[0] = '\0';
+  strncat(motd, &defaultMotd[0], MAX_MOTD_SIZE);
+  sprintf(&motd[strlen(defaultMotd)],"%d", noOfSchedules);
 }
 
