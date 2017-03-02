@@ -3,6 +3,7 @@
 *.ko
 *.obj
 *.elf
+masterstation
 
 # Precompiled Headers
 *.gch
@@ -36,3 +37,4 @@
 bbc-weather.html
 motd.txt
 setExtTemp.txt
+status.txt

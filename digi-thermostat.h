@@ -20,8 +20,11 @@
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL
 #define SCHED_CHECK_INTERVAL 1000UL
-#define SEND_TIME_INTERVAL 300UL //Send time from masterstation every 300 secs
 #define SCROLL_INTERVAL 300UL //Speed at which to scroll message (char shifted left by one)
+
+//Masterstation defines
+#define SEND_TIME_INTERVAL 300UL //secs, Send time from masterstation every 300 secs
+#define STATUS_INTERVAL 15UL //secs, how often masterstation polls for status
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings

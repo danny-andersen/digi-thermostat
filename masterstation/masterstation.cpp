@@ -71,6 +71,7 @@ int main(int argc, char** argv){
   int extSentTime = 0;
   int tempSentTime = 0;
   time_t sentTime = 0;
+  time_t statusTime = 0;
   bool networkUp = false;
   sleep(1);
   while(1) {
@@ -122,17 +123,18 @@ int main(int argc, char** argv){
 		} else {
 	    	    networkUp = false;
 	        }
-	    } else {
-	        //Req status
+	    } else if (abs(secs - statusTime) > (int)STATUS_INTERVAL) {
+	       //Req status
 	       if (getStatus()) {
 		   networkUp = true;
+		    statusTime = time(NULL);
 	       } else {
 	      	   networkUp = false;
 	       }
 	   }
 	}
     }
-    sleep(5);
+    delay(200);
   }
 }
 
@@ -308,13 +310,16 @@ void readMessage() {
     RF24NetworkHeader rxheader;        // If so, grab it and print it out
     Content payload;
     network.read(rxheader, &payload, sizeof(Content) );
-    printf("Received message: %s\n", rxheader.toString());
+    //printf("Received message: %s\n", rxheader.toString());
     switch ((int)rxheader.type) {
        case (STATUS_MSG):
-	    printf("Current temp: %ul\n", payload.status.currentTemp); 
-	    printf("Current set temp: %ul\n", payload.status.setTemp); 
-	    printf("Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
-	    printf("Mins to set temp: %ul\n", payload.status.minsToSet); 
+	    FILE *fs;
+	    fs = fopen("status.txt", "w+");
+	    fprintf(fs,"Current temp: %ul\n", payload.status.currentTemp); 
+	    fprintf(fs,"Current set temp: %ul\n", payload.status.setTemp); 
+	    fprintf(fs,"Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
+	    fprintf(fs,"Mins to set temp: %ul\n", payload.status.minsToSet); 
+	    fclose(fs);
 	break;
       case (SCHEDULE_MSG):
 	    printf("Sched Msg: %d,%d,%d,%d\n", payload.schedule.day,
