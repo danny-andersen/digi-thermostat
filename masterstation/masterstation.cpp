@@ -159,7 +159,9 @@ bool sendMotd() {
 	Content motdPayload;
 	if (fgets(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr), fmotd) != NULL) {
 	    motdPayload.motd.motdStr[strlen(motdPayload.motd.motdStr)-1] = '\0';
-	    printf("Sending motd: %s\n", motdPayload.motd.motdStr);
+	    fscanf(fmotd,"%lu\n",&motdPayload.motd.expiry);
+	    printf("Sending motd: %s\nExpiry:%lu\n", 
+			motdPayload.motd.motdStr,motdPayload.motd.expiry);
 	    motdHeader.type = MOTD_MSG;
 	    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
 		printf("Failed to write motd message\n");
@@ -315,10 +317,10 @@ void readMessage() {
        case (STATUS_MSG):
 	    FILE *fs;
 	    fs = fopen("status.txt", "w+");
-	    fprintf(fs,"Current temp: %ul\n", payload.status.currentTemp); 
-	    fprintf(fs,"Current set temp: %ul\n", payload.status.setTemp); 
+	    fprintf(fs,"Current temp: %d\n", payload.status.currentTemp); 
+	    fprintf(fs,"Current set temp: %d\n", payload.status.setTemp); 
 	    fprintf(fs,"Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
-	    fprintf(fs,"Mins to set temp: %ul\n", payload.status.minsToSet); 
+	    fprintf(fs,"Mins to set temp: %d\n", payload.status.minsToSet); 
 	    fclose(fs);
 	break;
       case (SCHEDULE_MSG):

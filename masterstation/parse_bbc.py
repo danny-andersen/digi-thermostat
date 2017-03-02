@@ -56,12 +56,12 @@ if __name__ == "__main__":
     if endWeather != "":
 	forecast += " and then " + endWeather
     now = datetime.now().time() 
-    if now.hour <= sunriseHr:
+    if now.hour <= sunriseHr + 1:
 	forecast = sunriseStr + ", " + forecast
-    elif now.hour > 14 and now.hour <= sunsetHr:
+    elif now.hour > 14 and now.hour <= sunsetHr + 1:
 	forecast = sunsetStr + ", " + forecast
-    print len(forecast)
     print forecast
+    expiry = abs(now.hour - int(hours[end])) * 3600 * 1000;
     #Save first hour temp as ext temp
     with open("setExtTemp.txt", "w") as f:
 	f.truncate()
@@ -69,5 +69,6 @@ if __name__ == "__main__":
     with open("motd.txt", 'w') as f:
 	f.truncate()
 	f.write(forecast + "\n")
+	f.write("%d" % expiry + "\n")
 
     
