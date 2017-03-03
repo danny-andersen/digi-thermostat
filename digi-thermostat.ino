@@ -36,7 +36,7 @@ int16_t currentTemp = 1000;
 int16_t lastScheduledTemp = 0;
 volatile int16_t currentSetTemp = 0;
 int16_t degPerHour = 50; //Default heating power - 5C per hour increase
-int16_t extAdjustment = 2; //Weighting of difference between external and internal temp
+int16_t extAdjustment = 50; //Weighting of difference between external and internal temp, e.g. if 10 deg diff (100/50) = -2deg
 
 boolean heatOn = FALSE;
 byte noOfSchedules = 0;
@@ -87,9 +87,9 @@ void setup() {
   Serial.begin(115200);
   while (!Serial); 
 #endif      
-  Serial.begin(115200);
-  printf_begin();
-  while (!Serial); 
+//  Serial.begin(115200);
+//  printf_begin();
+//  while (!Serial); 
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -150,10 +150,7 @@ void setup() {
   //Note: Max position: 32767
   //First byte is number of schedules
   noOfSchedules = eepromRead(0);
-#ifdef SERIAL_DEBUG
-  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
-#endif
-  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
+//  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
   if (noOfSchedules > MAX_SCHEDULES) {
     //Assume eprom corrupted
     eepromWrite(0,0x00);
@@ -566,19 +563,31 @@ void displayState(uint8_t changedState) {
     }
     lcd.setCursor(0, 0);
     String dateTimeStr = getTimeStr();
-    String currTempStr = String((float)(currentTemp / 10.0), 1);
-    lcd.print(dateTimeStr + "   " + currTempStr + "C");
+    String currTempStr;
+    currTempStr = String((float)(currentTemp / 10.0), 1) + "C";
+    if (currentTemp <= 100 && currentTemp > 0) {
+       currTempStr = "0" + currTempStr;
+    } else if (currentTemp == 0) {
+       currTempStr = " 0.0C";
+    }
+    lcd.print(dateTimeStr + "   " + currTempStr);
     lcd.setCursor(0, 1);
-    lcd.print(runTimeStr + " Set:" + String((float)(currentSetTemp / 10.0), 1) + "C");
+    String setTempStr;
+    setTempStr = String((float)(currentSetTemp / 10.0), 1) + "C";
+    if (currentSetTemp <= 100 && currentSetTemp > 0) {
+       setTempStr = "0" + setTempStr;
+    } else if (currentSetTemp == 0) {
+       setTempStr = " 0.0C";
+    }
+    lcd.print(runTimeStr + " Set:" + setTempStr);
     lcd.setCursor(0, 2);
     String boilerStatStr = heatOn ? "ON    " : "OFF   ";
     String extTempStr = "??.?C";
     if (extTemp != 1000) {
-       if (extTemp >= 100 || extTemp < 0) {
-          extTempStr = String((float)(extTemp / 10.0), 1) + "C";
-       } else if (extTemp != 0) {
-          extTempStr = "0" + String((float)(extTemp / 10.0), 1) + "C";
-       } else {
+       extTempStr = String((float)(extTemp / 10.0), 1) + "C";
+       if (extTemp < 100 && extTemp != 0) {
+          extTempStr = "0" + extTempStr;
+       } else if (extTemp == 0) {
           extTempStr = " 0.0C";
        }
     }
@@ -699,7 +708,9 @@ unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
     int16_t deg = degPerHour;
     if (tempExt != 1000 && tempExt < tempNow) {
       //Reduce based on outside temp
-      deg -= (tempNow - tempExt) * extAdjustment;
+      int16_t adj = (tempNow - tempExt) / extAdjustment;
+      if (adj > 3) adj = 3;
+      deg -= adj;
     }
     float noSecs = (tempSet - tempNow) * 3600.0 / deg;
     noMs = (unsigned long)(noSecs * 1000);
