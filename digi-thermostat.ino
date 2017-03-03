@@ -40,6 +40,7 @@ int16_t extAdjustment = 2; //Weighting of difference between external and intern
 
 boolean heatOn = FALSE;
 byte noOfSchedules = 0;
+boolean defaultSchedule = false;
 
 unsigned long currentMillis = 0;
 unsigned long lastRTCRead = 0;
@@ -397,6 +398,7 @@ void addDefaultSchedule() {
   sched.elem = elem;
   memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
   noOfSchedules = 1;
+  defaultSchedule = true;
 }
 
 uint8_t checkMasterMessages(uint8_t changedState) {
@@ -411,6 +413,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
     network.read(header, &payload, sizeof(Content)); //Read message
     Serial.print("Header: ");
     Serial.println(header.toString());
+    flickerLED();
     switch((byte)header.type) {
       case (REQ_STATUS_MSG):
           sendStatus = true;
@@ -476,9 +479,14 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           elem.end = payload.schedule.end;
           elem.temp = payload.schedule.temp;
           sched.elem = elem;
+          if (defaultSchedule) {
+            //Overwrite the default
+            noOfSchedules = 0;
+            defaultSchedule = false;
+          }
           memcpy(&schedules[noOfSchedules], &sched.raw, sizeof(SchedByElem));
-          noOfSchedules++;
           writeSchedule(noOfSchedules, &sched.raw[0]);
+          noOfSchedules++;
           //Write number of schedules at start address
           eepromWrite(0, noOfSchedules);
         break;
@@ -522,6 +530,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
         break;
 
     }
+    flickerLED();
     if (sendStatus) {
       response.status.currentTemp = currentTemp;
       response.status.setTemp = currentSetTemp;
@@ -532,6 +541,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       if (!network.write(respHeader, &response, sizeof(Content))) {
         Serial.println("Send failed");
       }
+      flickerLED();
     }
   }
   return changedState;
@@ -608,7 +618,7 @@ unsigned long getRunTime() {
 
 void writeSchedule(int schedNum, byte * sched) {
   int cnt;
-  cnt = 1 + ((schedNum - 1) * sizeof(SchedByElem));
+  cnt = 1 + (schedNum * sizeof(SchedByElem));
   for (int j=0; j<sizeof(SchedByElem); j++) {
       eepromWrite(cnt, *sched++);
       cnt++;
@@ -621,6 +631,7 @@ void eepromWrite(unsigned int eeaddress, byte data ) {
   Wire.write((int)(eeaddress >> 8)); // MSB
   Wire.write((int)(eeaddress & 0xFF)); // LSB
   Wire.write(rdata);
+  delay(5);
   Wire.endTransmission();
 }
 
@@ -750,6 +761,18 @@ void switchHeat(boolean on) {
    digitalWrite(RELAY, LOW);
    heatOn = false;
   }
+}
+
+void flickerLED() {
+  int ledToFlick;
+  if (heatOn) {
+    ledToFlick = RED_LED;
+  } else {
+    ledToFlick = GREEN_LED;
+  }
+  digitalWrite(ledToFlick, HIGH);
+  delay(50);
+  digitalWrite(ledToFlick, LOW);
 }
 
 void setDefaultMotd() {
