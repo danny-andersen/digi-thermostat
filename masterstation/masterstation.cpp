@@ -245,6 +245,7 @@ bool sendSched() {
 	printf("Failed to send delete schedule message\n");
 	status = false;
     } else {
+	delay(200);
 	//Send schedules, one at a time
 	FILE *fsched;
 	fsched = fopen(SCHEDULE_FILE, "r");
@@ -254,7 +255,6 @@ bool sendSched() {
 	//Read line, split by "," and then fill payload and send
 	while ((read = getline(&line, &len, fsched)) != -1) {
 	    network.update();
-	    delay(200);
 	    printf("%s", line);
 	    char part[32];
 	    int pos = strcspn(line, ",");
@@ -301,6 +301,8 @@ bool sendSched() {
 		    status = false;
 		    break; //quit while
 	        }
+		//Give it time to write it to EEPROM
+		delay(400);
 	    }
 	} //end while
 	free(line);
