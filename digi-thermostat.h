@@ -3,8 +3,8 @@
 //#define DOWN_BUTTON 3
 #define ROTARY_A 2
 #define ROTARY_B 3
-#define THERM_ONE_WIRE_BUS 4
-#define BOOST_BUTTON 5
+#define BOOST_BUTTON 4
+#define THERM_ONE_WIRE_BUS 5
 #define RELAY 6
 #define GREEN_LED 7
 #define RED_LED 8

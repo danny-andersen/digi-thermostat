@@ -96,6 +96,7 @@ void setup() {
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
   pinMode(RELAY, OUTPUT);
+  digitalWrite(RELAY, HIGH);
   //Digi ins
 //  pinMode(UP_BUTTON, INPUT_PULLUP);
 //  upButton.attach(UP_BUTTON);
@@ -745,12 +746,12 @@ void switchHeat(boolean on) {
   if (on) {
    digitalWrite(RED_LED, LOW);
    digitalWrite(GREEN_LED, HIGH);
-   digitalWrite(RELAY, HIGH);
+   digitalWrite(RELAY, LOW);
    heatOn = true;
   } else {
    digitalWrite(RED_LED, HIGH);
    digitalWrite(GREEN_LED, LOW);
-   digitalWrite(RELAY, LOW);
+   digitalWrite(RELAY, HIGH);
    heatOn = false;
   }
 }
