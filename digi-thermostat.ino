@@ -56,6 +56,7 @@ unsigned long backLightTimer = BACKLIGHT_TIME;
 unsigned long motdExpiryTimer = 0;
 
 char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+char* monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 //Rotary encoder
 byte rotaryA = 0;
@@ -674,12 +675,6 @@ int16_t getSetPoint() {
   return temp;
 }
 
-const char * getDateStr() {
-    char dateStr[11];
-    sprintf(dateStr,"20%02d-%02d-%02d",rtc.year(),rtc.month(),rtc.day());
-    return dateStr;
-}
-
 //Calculate the number of ms to reach set temp
 unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
   unsigned long noMs = 0;
@@ -738,6 +733,13 @@ String getTimeStr() {
   }
   return time;
 }
+
+const char * getDateStr() {
+    char dateStr[11];
+    sprintf(dateStr,"%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
+    return dateStr;
+}
+
 
 void switchHeat(boolean on) {
   if (on) {
