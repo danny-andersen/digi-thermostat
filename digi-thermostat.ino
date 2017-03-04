@@ -78,13 +78,14 @@ byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 int16_t extTemp = 1000; //This will be set by remote command
 char motd[MAX_MOTD_SIZE]; //Will be set by remote command
-char defaultMotd[] = "V:"__DATE__" S:";
-char motdScrolled[LCD_COLS+1];
+char defaultMotd[] = "V:"__DATE__" S:"; //Show build date and number of schedules
+char motdScrolled[LCD_COLS+1]; //Buffer used to scroll motd on LCD
 int8_t scrollPos = 0;
 
 void setup() {
 #ifdef SERIAL_DEBUG
   Serial.begin(115200);
+  printf_begin();
   while (!Serial); 
 #endif      
 //  Serial.begin(115200);
@@ -317,12 +318,6 @@ void intHandlerRotaryA() {
     //Only inc state on rising edge of A and B is off (CW rotation)
     if (rotaryA && !rotaryB) 
         currentSetTemp = currentSetTemp + SET_INTERVAL;
-//    if (rotaryA) {
-//      currentSetTemp = rotaryB ?  currentSetTemp - SET_INTERVAL : currentSetTemp + SET_INTERVAL;
-//    } 
-//    else {
-//      currentSetTemp = rotaryB ?  currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
-//    }
   }
   lastTriggerTimeA = t;
 } 
@@ -335,41 +330,11 @@ void intHandlerRotaryB() {
     //Only inc state on rising edge of B and A is off (CCW rotation)
     if (rotaryB && !rotaryA)
       currentSetTemp = currentSetTemp - SET_INTERVAL; 
-//    if(rotaryB) { 
-//      currentSetTemp = rotaryA ? currentSetTemp - SET_INTERVAL : currentSetTemp + SET_INTERVAL;
-//    } 
-//    else {
-//      currentSetTemp = rotaryA ? currentSetTemp + SET_INTERVAL : currentSetTemp - SET_INTERVAL;
-//    }
   }
   lastTriggerTimeB = t;
 }
 
 uint8_t readInputs(uint8_t changedState) {
-//    if (upButton.update() && upButton.fell()) {
-//    //increase the set temp
-//    currentSetTemp += SET_INTERVAL;
-//    upButtonDownTime = currentMillis;
-//    changedState = 1;
-//  }
-//  if (upButton.read() == LOW && currentMillis - upButtonDownTime > BUTTON_HOLD_TIME) {
-//    //increase the set temp
-//    currentSetTemp += SET_INTERVAL * 2.0;
-//    upButtonDownTime = currentMillis;
-//    changedState = 1;
-//  }
-//  if (downButton.update() && downButton.fell()) {
-//    //decrease the set temp
-//    currentSetTemp -= SET_INTERVAL;
-//    downButtonDownTime = currentMillis;
-//    changedState = 1;
-//  }
-//  if (downButton.read() == LOW && currentMillis - downButtonDownTime > BUTTON_HOLD_TIME) {
-//    //decrease the set temp
-//    currentSetTemp -= SET_INTERVAL * 2.0;
-//    downButtonDownTime = currentMillis;
-//    changedState = 1;
-//  }
   if (boostButton.update() && boostButton.fell()) {
     if (boostTimer == 0) {
       //turn heating on for a bit, regardless of set temp
@@ -408,8 +373,8 @@ uint8_t checkMasterMessages(uint8_t changedState) {
     boolean sendStatus = false;
     union SchedUnion sched;
     network.read(header, &payload, sizeof(Content)); //Read message
-    Serial.print("Header: ");
-    Serial.println(header.toString());
+//    Serial.print("Header: ");
+//    Serial.println(header.toString());
     flickerLED();
     switch((byte)header.type) {
       case (REQ_STATUS_MSG):
@@ -520,7 +485,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
                 payload.dateTime.month, 
                 payload.dateTime.year);
 //        Serial.println("Rx Time: " + payload.dateTime.hour + 
-//                    payload.dateTime.min + payload.dateTime.sec);
+//                    payload.dateTime.min + payload.dateTime.sec + payload.dateTime.year);
         rtc.refresh();
 //        Serial.println("Clk Time: " + rtc.hour() + 
 //                    rtc.minute() + rtc.second());
@@ -533,10 +498,10 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       response.status.setTemp = currentSetTemp;
       response.status.heatOn = (byte)heatOn;
       response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
-      Serial.println("Sending status msg");
+//      Serial.println("Sending status msg");
       respHeader.type = STATUS_MSG;
       if (!network.write(respHeader, &response, sizeof(Content))) {
-        Serial.println("Send failed");
+//        Serial.println("Send failed");
       }
       flickerLED();
     }
@@ -546,18 +511,24 @@ uint8_t checkMasterMessages(uint8_t changedState) {
 
 void displayState(uint8_t changedState) {
     //Display current status
+    String runTimeStr;
     unsigned long runTime = getRunTime();
-    String runTimeStr = "Run:";
-    unsigned long threeDigit = 6000000;
-    if (runTime < threeDigit) {
-      runTimeStr += " ";
+    if (runTime != 0) {
+      unsigned long threeDigit = 6000000;
+      runTimeStr = "Run:";
+      if (runTime < threeDigit) {
+        runTimeStr += " ";
+      }
+      runTimeStr += getMinSec(runTime);
+      if ((lastRunTime < threeDigit && runTime >= threeDigit) || (lastRunTime >= threeDigit && runTime < threeDigit)) {
+        changedState = 2;
+      }
+  //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
+      lastRunTime = runTime;
+    } else {
+      //Show date
+      runTimeStr = getDateStr();
     }
-    runTimeStr += getMinSec(runTime);
-    if ((lastRunTime < threeDigit && runTime >= threeDigit) || (lastRunTime >= threeDigit && runTime < threeDigit)) {
-      changedState = 2;
-    }
-//    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
-    lastRunTime = runTime;
     if (changedState > 1) {
       lcd.clear();
     }
@@ -695,11 +666,11 @@ int16_t getSetPoint() {
   return temp;
 }
 
-#ifdef SERIAL_DEBUG
-String getDateStr() {
-    return String(rtc.year()) + "/" + String(rtc.month()) + "/" + String(rtc.day(), DEC);
+const char * getDateStr() {
+    char dateStr[11];
+    sprintf(dateStr,"20%02d-%02d-%02d",rtc.year(),rtc.month(),rtc.day());
+    return dateStr;
 }
-#endif
 
 //Calculate the number of ms to reach set temp
 unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
