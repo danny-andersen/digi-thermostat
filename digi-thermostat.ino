@@ -50,6 +50,7 @@ unsigned long lastGetSched = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long lastScrollTime = 0;
+unsigned long scrollInterval = SCROLL_INTERVAL;
 unsigned long loopDelta = 0;
 unsigned long lastRunTime = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
@@ -88,9 +89,9 @@ void setup() {
   printf_begin();
   while (!Serial); 
 #endif      
-//  Serial.begin(115200);
-//  printf_begin();
-//  while (!Serial); 
+  Serial.begin(115200);
+  printf_begin();
+  while (!Serial); 
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -278,7 +279,7 @@ void loop() {
     displayState(changedState);
   }
 
-  if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > SCROLL_INTERVAL) {
+  if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > scrollInterval) {
     //Need to scroll the 4th line of the display 
     lastScrollTime = currentMillis;
     int charsToCopy = 20;
@@ -294,11 +295,30 @@ void loop() {
     motdScrolled[LCD_COLS] = '\0';
     lcd.setCursor(0, 3);
     lcd.print(motdScrolled);
-//    Serial.println(motdScrolled);
+    Serial.println(motdScrolled);
+    scrollInterval = SCROLL_INTERVAL;
+    if (scrollPos == 0) {
+      //Pause scroll at end and start
+      scrollInterval = SCROLL_PAUSE;
+    }
     if (charsToCopy <= 0) {
       scrollPos = 0;
+      //Pause scroll at end and start
+      scrollInterval = SCROLL_PAUSE;
     } else {
-      scrollPos += 1;
+      //advance to the next word
+      int newPos;
+      newPos = 1 + strchr(&motd[scrollPos+1], ' ') - &motd[0];
+      if (newPos > strlen(motd)) newPos = 0;
+      int currentScreen;
+      int nextScreen;
+      currentScreen = scrollPos / LCD_COLS;
+      nextScreen = newPos / LCD_COLS;
+      Serial.println(String(currentScreen) + " next: " + String(nextScreen));
+      if (currentScreen != nextScreen) {
+        scrollInterval = SCROLL_PAUSE;
+      }
+      scrollPos = newPos;
     }
     
   }
@@ -412,7 +432,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             }
             motd[msglen] = '.';
             motd[msglen+1] = '.';
-            motd[msglen+2] = '.';
+            motd[msglen+2] = ' ';
             motd[msglen+3] = '\0';
           }
           changedState = 2;
