@@ -50,7 +50,6 @@ unsigned long lastGetSched = 0;
 unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long lastScrollTime = 0;
-unsigned long scrollInterval = SCROLL_INTERVAL;
 unsigned long loopDelta = 0;
 unsigned long lastRunTime = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
@@ -279,48 +278,49 @@ void loop() {
     displayState(changedState);
   }
 
-  if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > scrollInterval) {
+  if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > SCROLL_PAUSE) {
     //Need to scroll the 4th line of the display 
     lastScrollTime = currentMillis;
-    int charsToCopy = 20;
-    int frontChars = 0;
-    if (scrollPos + LCD_COLS > strlen(motd) - 1) {
-      charsToCopy = strlen(motd) - scrollPos;
-      frontChars = 20 - charsToCopy;
+    int charsToCopy = LCD_COLS;
+    int blankChars = 0;
+    int motdLen = strlen(motd);
+    if (scrollPos + LCD_COLS > motdLen - 1) {
+      charsToCopy = motdLen - scrollPos;
+      if (charsToCopy == 0) {
+        //Right at the end
+        charsToCopy = LCD_COLS;
+        scrollPos = 0;
+      } else {
+        blankChars = LCD_COLS - charsToCopy;
+      }
     }
     strncpy(&motdScrolled[0], &motd[scrollPos], charsToCopy);
-    if (frontChars > 0) {
-       strncpy(&motdScrolled[charsToCopy],&motd[0], frontChars);
+    if (blankChars > 0) {
+      //Add blanks to the end of the message for a full screen
+       memset(&motdScrolled[charsToCopy],' ', blankChars);
+       scrollPos = 0;
+    } else {
+      //advance to the next screen
+      int newPos = scrollPos;
+      int lastPos;
+      int lastSpace = strrchr(&motd[0], ' ');
+      //Find last word to use as first in next msg
+      while (newPos < lastSpace && newPos <= scrollPos + LCD_COLS && newPos < motdLen) {
+        lastPos = newPos;
+        do {
+          newPos++;
+        } while (motd[newPos] != ' ' && newPos < lastSpace && newPos < motdLen);
+      }
+      if (newPos != scrollPos + LCD_COLS) {
+        newPos = lastPos + 1;
+      }
+      if (newPos > motdLen) newPos = 0;
+      scrollPos = newPos;
     }
     motdScrolled[LCD_COLS] = '\0';
     lcd.setCursor(0, 3);
     lcd.print(motdScrolled);
-    Serial.println(motdScrolled);
-    scrollInterval = SCROLL_INTERVAL;
-    if (scrollPos == 0) {
-      //Pause scroll at end and start
-      scrollInterval = SCROLL_PAUSE;
-    }
-    if (charsToCopy <= 0) {
-      scrollPos = 0;
-      //Pause scroll at end and start
-      scrollInterval = SCROLL_PAUSE;
-    } else {
-      //advance to the next word
-      int newPos;
-      newPos = 1 + strchr(&motd[scrollPos+1], ' ') - &motd[0];
-      if (newPos > strlen(motd)) newPos = 0;
-      int currentScreen;
-      int nextScreen;
-      currentScreen = scrollPos / LCD_COLS;
-      nextScreen = newPos / LCD_COLS;
-      Serial.println(String(currentScreen) + " next: " + String(nextScreen));
-      if (currentScreen != nextScreen) {
-        scrollInterval = SCROLL_PAUSE;
-      }
-      scrollPos = newPos;
-    }
-    
+//    Serial.println(motdScrolled);
   }
   
 #ifdef SERIAL_DEBUG
@@ -423,18 +423,6 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           motdExpiryTimer = payload.motd.expiry;
           motd[0] = '\0';
           strncat(&motd[0], &payload.motd.motdStr[0], MAX_MOTD_SIZE);
-          uint8_t msglen;
-          msglen = strlen(motd);
-          if (msglen > LCD_COLS) {
-            //Message will scroll so add ... to delimit wrap around
-            if (msglen > MAX_MOTD_SIZE - 3) {
-              msglen = MAX_MOTD_SIZE - 3;
-            }
-            motd[msglen] = '.';
-            motd[msglen+1] = '.';
-            motd[msglen+2] = ' ';
-            motd[msglen+3] = '\0';
-          }
           changedState = 2;
         break;
       case (GET_SCHEDULES_MSG):
