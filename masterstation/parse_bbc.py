@@ -7,24 +7,22 @@ if __name__ == "__main__":
 	 sys.stderr.write("Please provide a file to parse\n")
 	 sys.exit(1)
     html = BeautifulSoup(open(sys.argv[1]).read(), "lxml")
-    def is_tr_with_timeclass(tag):
-    	return tag.has_attr("class") and not tag.has_attr("id")
-    res = ""
+    #Find start of hourly forecast
+    hourly = html.find("table", class_="moving-window");
     hours = []
-    for tr in html.find_all(class_="time"):
+    for tr in hourly.find_all(class_="time"):
         for th in tr.find_all("th"):
 	    for hr in th.find_all("span",class_="hour"):
 		hours.append(hr.string)
     #print hours
     weather = []
-    for tr in html.find_all(class_="weather-type"):
+    for tr in hourly.find_all(class_="weather-type"):
         for td in tr.find_all("td"):
 	    for hr in td.find_all("img"):
 	    	weather.append(hr["title"])
-		#res = res + "\n" + td.string
     #print weather
     temp = []
-    for tr in html.find_all(class_="temperature"):
+    for tr in hourly.find_all(class_="temperature"):
 	i = 0
         for td in tr.find_all("td"):
 	    for hr in td.find_all("span",attrs={"data-unit": "c"}):
@@ -33,7 +31,29 @@ if __name__ == "__main__":
 		    if (i):
 		    	temp.append(st);
 		    i = not i
-		    #res = res + "\n" + td.string
+    #Use observation module
+    #tempTag = html.find("p", class_="temperature");
+    #if (tempTag != None):
+    #    for hr in tempTag.find_all("span",attrs={"data-unit": "c"}):
+    #	   for st in hr.strings:
+    #	       temp.append(st);
+    #print temp
+    windSpeed = []
+    windDirection = []
+    for tr in hourly.find_all(class_="windspeed"):
+        for td in tr.find_all("td"):
+	   for hr in td.find_all("span",class_="windspeed-value-unit-mph"):
+	    	for st in hr.stripped_strings:
+    	   	    windSpeed.append(st);
+	   for hr in td.find_all("span",class_="description"):
+	    	for st in hr.stripped_strings:
+    	   	    windDirection.append(st);
+    windDir = windDirection[0].split()
+    windDirAbbr = ""
+    for wdw in windDir:
+	windDirAbbr += wdw[0];
+    wind = windSpeed[0]+windSpeed[1]+" " + windDirAbbr
+
     sunrise = html.find(class_="sunrise")
     sunriseStr = sunrise.string;
     sunriseHr = int(sunriseStr.split()[1].split(':')[0])
@@ -52,9 +72,12 @@ if __name__ == "__main__":
 	end += 1
     if end >= len(hours): 
 	end -= 1 
+
+    #Put it all together
     forecast = startWeather + " until " + hours[end] + "00"
     if endWeather != "":
 	forecast += " and then " + endWeather
+    forecast += ", Wind:" + wind
     now = datetime.now().time() 
     if now.hour <= sunriseHr + 1:
 	forecast = sunriseStr + ", " + forecast
@@ -62,13 +85,15 @@ if __name__ == "__main__":
 	forecast = sunsetStr + ", " + forecast
     print forecast
     expiry = abs(now.hour - int(hours[end])) * 3600 * 1000;
+
+    #Save output into files for sending to thermostat
     #Save first hour temp as ext temp
     with open("setExtTemp.txt", "w") as f:
 	f.truncate()
 	f.write(temp[0] + "\n")
+    #Add expiry to motd
     with open("motd.txt", 'w') as f:
 	f.truncate()
 	f.write(forecast + "\n")
 	f.write("%d" % expiry + "\n")
-
     
