@@ -90,9 +90,9 @@ void setup() {
   printf_begin();
   while (!Serial); 
 #endif      
-  Serial.begin(115200);
-  printf_begin();
-  while (!Serial); 
+//  Serial.begin(115200);
+//  printf_begin();
+//  while (!Serial); 
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -543,7 +543,7 @@ void displayState(uint8_t changedState) {
     }
     int i;
     i = strlen(boilerStatStr);
-    while (strlen(boilerStatStr) <= MAX_WIND_SIZE - 1) {
+    while (strlen(boilerStatStr) < MAX_WIND_SIZE - 1) {
       boilerStatStr[i] = ' ';
       i++;
       boilerStatStr[i] = '\0';

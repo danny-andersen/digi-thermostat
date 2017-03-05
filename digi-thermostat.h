@@ -21,7 +21,7 @@
 #define TEMPERATURE_READ_INTERVAL 15000UL
 #define SCHED_CHECK_INTERVAL 1000UL
 //#define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
-#define SCROLL_PAUSE 1000UL //Pause at screen roll
+#define SCROLL_PAUSE 1200UL //Pause at screen roll
 
 //Masterstation defines
 #define SEND_TIME_INTERVAL 300UL //secs, Send time from masterstation every 300 secs
