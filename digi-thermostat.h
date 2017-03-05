@@ -67,7 +67,8 @@
 #define EXTTEMP_FILE "setExtTemp.txt"
 #define SET_TEMP_FILE "setTemp.txt"
 
-#define MAX_MOTD_SIZE 64
+#define MAX_MOTD_SIZE 80
+#define MAX_WIND_SIZE 12
 
 //Struct is long word padded...
 struct SchedByElem {
@@ -95,6 +96,7 @@ union Content {
     } setTemp;
     struct SetExt {
       int16_t setExt;
+      char windStr[MAX_WIND_SIZE];
     } setExt;
     struct AdjSetTimeConstants {
       int16_t degPerHour; //in tenths of a degree - 50 = 5.0

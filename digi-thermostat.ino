@@ -79,6 +79,7 @@ byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 int16_t extTemp = 1000; //This will be set by remote command
 char motd[MAX_MOTD_SIZE]; //Will be set by remote command
+char windStr[MAX_WIND_SIZE]; //Will be set by remote command
 char defaultMotd[] = "V:"__DATE__" S:"; //Show build date and number of schedules
 char motdScrolled[LCD_COLS+1]; //Buffer used to scroll motd on LCD
 int8_t scrollPos = 0;
@@ -265,8 +266,12 @@ void loop() {
     if (motdExpiryTimer > loopDelta) {
       motdExpiryTimer -= loopDelta;
     } else {
+      //Forecast has expired, as has external temp and wind
       motdExpiryTimer = 0;
+      windStr[0] = '\0';
+      extTemp = 1000;
       setDefaultMotd();
+      changedState = 2;
     }
   }
 
@@ -283,53 +288,10 @@ void loop() {
   if (strlen(motd) > LCD_COLS && currentMillis - lastScrollTime > SCROLL_PAUSE) {
     //Need to scroll the 4th line of the display 
     lastScrollTime = currentMillis;
-    int charsToCopy = LCD_COLS;
-    int blankChars = 0;
-    int motdLen = strlen(motd);
-    if (scrollPos + LCD_COLS > motdLen - 1) {
-      charsToCopy = motdLen - scrollPos;
-      if (charsToCopy == 0) {
-        //Right at the end
-        charsToCopy = LCD_COLS;
-        scrollPos = 0;
-      } else {
-        blankChars = LCD_COLS - charsToCopy;
-      }
-    }
-    strncpy(&motdScrolled[0], &motd[scrollPos], charsToCopy);
-    if (blankChars > 0) {
-      //Add blanks to the end of the message for a full screen
-       memset(&motdScrolled[charsToCopy],' ', blankChars);
-       scrollPos = 0;
-    } else {
-      //advance to the next screen
-      int newPos = scrollPos;
-      int lastPos;
-      int lastSpace = strrchr(&motd[0], ' ');
-      //Find last word to use as first in next msg
-      while (newPos < lastSpace && newPos <= scrollPos + LCD_COLS && newPos < motdLen) {
-        lastPos = newPos;
-        do {
-          newPos++;
-        } while (motd[newPos] != ' ' && newPos < lastSpace && newPos < motdLen);
-      }
-      if (newPos != scrollPos + LCD_COLS) {
-        newPos = lastPos + 1;
-      }
-      if (newPos > motdLen) newPos = 0;
-      scrollPos = newPos;
-    }
-    motdScrolled[LCD_COLS] = '\0';
-    lcd.setCursor(0, 3);
-    lcd.print(motdScrolled);
-//    Serial.println(motdScrolled);
+    scrollLcd();
   }
   
-#ifdef SERIAL_DEBUG
-  Serial.println("End loop");
-#endif
-  delay(LOOP_DELAY); //temporary delay in loop
-
+  delay(LOOP_DELAY);
 }
 
 // Interrupt on A changing state
@@ -408,18 +370,17 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       case (SET_TEMP_MSG):
           currentSetTemp = payload.setTemp.setTemp;
           changedState = 2;
-          sendStatus = true;
         break;
       case (SET_EXT_MSG):
           extTemp = payload.setExt.setExt;
+          windStr[0] = '\0';
+          strncat(&windStr[0], &payload.setExt.windStr[0], MAX_WIND_SIZE);
           changedState = 2;
-          sendStatus = true;
         break;
       case (ADJ_SETTIME_CONST_MSG): 
           degPerHour = payload.adjSetTimeConstants.degPerHour;
           extAdjustment = payload.adjSetTimeConstants.extAdjustment;
           changedState = 1;
-          sendStatus = true;
         break;
       case (MOTD_MSG):
           motdExpiryTimer = payload.motd.expiry;
@@ -562,7 +523,31 @@ void displayState(uint8_t changedState) {
     }
     lcd.print(runTimeStr + " Set:" + setTempStr);
     lcd.setCursor(0, 2);
-    String boilerStatStr = heatOn ? "ON    " : "OFF   ";
+    char *boilerStatStr;
+    if (strlen(windStr) != 0 && rtc.second() % 2) {
+      //display wind speed
+      boilerStatStr = windStr;
+    } else {
+      char bsbuf[MAX_WIND_SIZE];
+      char bs[] = "Heat:";
+      char on[] = "ON";
+      char off[] = "OFF";
+      bsbuf[0] = '\0';
+      strncat(&bsbuf[0], &bs[0], strlen(bs));
+      if (heatOn) {
+        strncat(&bsbuf[strlen(bsbuf)-1], &on[0], strlen(on));
+      } else {
+        strncat(&bsbuf[strlen(bsbuf)-1], &off[0], strlen(off));
+      }
+      boilerStatStr = bsbuf;
+    }
+    int i;
+    i = strlen(boilerStatStr);
+    while (strlen(boilerStatStr) <= MAX_WIND_SIZE - 1) {
+      boilerStatStr[i] = ' ';
+      i++;
+      boilerStatStr[i] = '\0';
+    }
     String extTempStr = "??.?C";
     if (extTemp != 1000) {
        extTempStr = String((float)(extTemp / 10.0), 1) + "C";
@@ -572,11 +557,54 @@ void displayState(uint8_t changedState) {
           extTempStr = " 0.0C";
        }
     }
-    lcd.print("Heat:" + boilerStatStr + "Ext:" + extTempStr);
+    lcd.print(String(boilerStatStr) + "Ext:" + extTempStr);
     if (strlen(motd) <= LCD_COLS) {
       lcd.setCursor(0, 3);
       lcd.print(motd); //Only print here if motd fits, otherwise needs to scroll
     }
+}
+
+void scrollLcd() {
+    int charsToCopy = LCD_COLS;
+    int blankChars = 0;
+    int motdLen = strlen(motd);
+    if (scrollPos + LCD_COLS > motdLen - 1) {
+      charsToCopy = motdLen - scrollPos;
+      if (charsToCopy == 0) {
+        //Right at the end
+        charsToCopy = LCD_COLS;
+        scrollPos = 0;
+      } else {
+        blankChars = LCD_COLS - charsToCopy;
+      }
+    }
+    strncpy(&motdScrolled[0], &motd[scrollPos], charsToCopy);
+    if (blankChars > 0) {
+      //Add blanks to the end of the message for a full screen
+       memset(&motdScrolled[charsToCopy],' ', blankChars);
+       scrollPos = 0;
+    } else {
+      //advance to the next screen
+      int newPos = scrollPos;
+      int lastPos;
+      int lastSpace = strrchr(&motd[0], ' ');
+      //Find last word to use as first in next msg
+      while (newPos < lastSpace && newPos <= scrollPos + LCD_COLS && newPos < motdLen) {
+        lastPos = newPos;
+        do {
+          newPos++;
+        } while (motd[newPos] != ' ' && newPos < lastSpace && newPos < motdLen);
+      }
+      if (newPos != scrollPos + LCD_COLS) {
+        newPos = lastPos + 1;
+      }
+      if (newPos > motdLen) newPos = 0;
+      scrollPos = newPos;
+    }
+    motdScrolled[LCD_COLS] = '\0';
+    lcd.setCursor(0, 3);
+    lcd.print(motdScrolled);
+//    Serial.println(motdScrolled);
 }
 
 boolean checkBackLight() {
