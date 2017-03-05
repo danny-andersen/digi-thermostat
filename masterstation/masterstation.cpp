@@ -183,9 +183,9 @@ bool sendTime(time_t secs) {
     payload.dateTime.hour = t->tm_hour;
     payload.dateTime.dayOfMonth = t->tm_mday;
     payload.dateTime.month = t->tm_mon + 1;
-    payload.dateTime.year = t->tm_year;
+    payload.dateTime.year = t->tm_year - 100;
     payload.dateTime.dayOfWeek = t->tm_wday + 1;
-    printf("Sending set time, wday: %d\n",t->tm_wday);
+    printf("Sending set time, wday: %d, yr: %d\n",t->tm_wday, t->tm_year);
     if (!network.write(header, &payload, sizeof(Content))) {
 	printf("Failed to write time message\n");
 	status = false;
