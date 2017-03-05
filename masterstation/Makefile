@@ -2,7 +2,7 @@ include Makefile.inc
 
 PROGRAMS = masterstation
 
-SOURCES = $(PROGRAMS:=.cpp)
+SOURCES = $(PROGRAMS:=.cpp) ../digi-thermostat.h
 
 all: $(PROGRAMS)
 

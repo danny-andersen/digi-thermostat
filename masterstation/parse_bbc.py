@@ -77,7 +77,6 @@ if __name__ == "__main__":
     forecast = startWeather + " until " + hours[end] + "00"
     if endWeather != "":
 	forecast += " and then " + endWeather
-    forecast += ", Wind:" + wind
     now = datetime.now().time() 
     if now.hour <= sunriseHr + 1:
 	forecast = sunriseStr + ", " + forecast
@@ -91,6 +90,7 @@ if __name__ == "__main__":
     with open("setExtTemp.txt", "w") as f:
 	f.truncate()
 	f.write(temp[0] + "\n")
+    	f.write(wind + "\n")
     #Add expiry to motd
     with open("motd.txt", 'w') as f:
 	f.truncate()

@@ -41,7 +41,7 @@ RF24Network network(radio);
 // Radio pipe addresses for the 2 nodes to communicate.
 const uint8_t pipes[][6] = {"1Node","2Node"};
 
-void readMessage();
+bool readMessage();
 bool sendMotd();
 bool sendSched();
 bool getStatus();
@@ -77,7 +77,10 @@ int main(int argc, char** argv){
   while(1) {
     network.update();
     if (network.available()) {
-	readMessage();
+	if (readMessage() && !networkUp) {
+	    printf("Network is now up!\n");
+	    networkUp = true;
+	}
     } else {
 	//Check which command to send, but only do one
         struct stat fileStat;
@@ -126,8 +129,7 @@ int main(int argc, char** argv){
 	    } else if (abs(secs - statusTime) > (int)STATUS_INTERVAL) {
 	       //Req status
 	       if (getStatus()) {
-		   networkUp = true;
-		    statusTime = time(NULL);
+		   statusTime = time(NULL);
 	       } else {
 	      	   networkUp = false;
 	       }
@@ -157,7 +159,10 @@ bool sendMotd() {
     if (fmotd != NULL) {
 	RF24NetworkHeader motdHeader(DIGI_THERM_NODE_ID);
 	Content motdPayload;
-	if (fgets(&motdPayload.motd.motdStr[0], sizeof(motdPayload.motd.motdStr), fmotd) != NULL) {
+	char motdbuf[512];
+	if (fgets(&motdbuf[0], sizeof(motdbuf), fmotd) != NULL) {
+	    motdPayload.motd.motdStr[0] = '\0';
+	    strncat(&motdPayload.motd.motdStr[0], &motdbuf[0], MAX_MOTD_SIZE);
 	    motdPayload.motd.motdStr[strlen(motdPayload.motd.motdStr)-1] = '\0';
 	    fscanf(fmotd,"%lu\n",&motdPayload.motd.expiry);
 	    printf("Sending motd: %s\nExpiry:%lu\n", 
@@ -198,14 +203,22 @@ bool sendExtTemp() {
     fext = fopen(EXTTEMP_FILE, "r");
     bool status = true;
     char tempStr[16];
+    char windStr[MAX_WIND_SIZE];
     if (fext != NULL && fgets(&tempStr[0], sizeof(tempStr), fext) != NULL) {
 	RF24NetworkHeader header(DIGI_THERM_NODE_ID);
         header.type = SET_EXT_MSG;
 	Content payload;
 	float tempFl;
-        sscanf(&tempStr[0],"%f",&tempFl); 
+        sscanf(&tempStr[0],"%f\n",&tempFl); 
+	if (fgets(&windStr[0], sizeof(windStr), fext) != NULL) {
+	    payload.setExt.windStr[0] = '\0';
+	    strncat(&payload.setExt.windStr[0],&windStr[0], MAX_WIND_SIZE);
+	    //Remove newline
+	    payload.setExt.windStr[strlen(payload.setExt.windStr)-1] = '\0';
+	}
         payload.setExt.setExt  = (int16_t)(tempFl * 10);
         printf("Sending Ext Temp: %d\n", payload.setExt.setExt);
+        printf("Sending Wind: %s\n", payload.setExt.windStr);
 	if (!network.write(header, &payload, sizeof(Content))) {
 	    printf("Failed to write set External Temp message\n");
 	    status = false;
@@ -310,13 +323,15 @@ bool sendSched() {
     return status;
 }
 
-void readMessage() {
+bool readMessage() {
     RF24NetworkHeader rxheader;        // If so, grab it and print it out
     Content payload;
     network.read(rxheader, &payload, sizeof(Content) );
     //printf("Received message: %s\n", rxheader.toString());
+    bool retStatus = false;
     switch ((int)rxheader.type) {
        case (STATUS_MSG):
+	    retStatus = true;
 	    FILE *fs;
 	    fs = fopen("status.txt", "w+");
 	    fprintf(fs,"Current temp: %d\n", payload.status.currentTemp); 
@@ -326,6 +341,7 @@ void readMessage() {
 	    fclose(fs);
 	break;
       case (SCHEDULE_MSG):
+	    retStatus = true;
 	    printf("Sched Msg: %d,%d,%d,%d\n", payload.schedule.day,
 					payload.schedule.start,
 					payload.schedule.end,
@@ -335,6 +351,7 @@ void readMessage() {
 	    printf("Received unknown message type: %d\n", rxheader.type);
 	break;
     }
+    return retStatus;
 }
 
 bool getStatus() {
@@ -343,7 +360,7 @@ bool getStatus() {
     Content payload;
     bool status = true;
     if (!network.write(header, &payload, sizeof(Content))) {
-	printf("Failed to write status req message\n");
+	printf("Failed to send status req message\n");
 	status = false;
     }
     return status;
