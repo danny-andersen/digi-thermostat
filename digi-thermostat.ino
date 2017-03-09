@@ -35,12 +35,14 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 int16_t currentTemp = 1000;
 int16_t lastScheduledTemp = 0;
 volatile int16_t currentSetTemp = 0;
+byte noOfSchedules = 0;
+boolean isDefaultSchedule = false;
+SchedUnion defaultSchedule;
+SchedUnion currentSched;
+SchedUnion nextSched;
+boolean heatOn = FALSE;
 int16_t degPerHour = 50; //Default heating power - 5C per hour increase
 int16_t extAdjustment = 50; //Weighting of difference between external and internal temp, e.g. if 10 deg diff (100/50) = -2deg
-
-boolean heatOn = FALSE;
-byte noOfSchedules = 0;
-boolean defaultSchedule = false;
 
 unsigned long currentMillis = 0;
 unsigned long lastRTCRead = 0;
@@ -51,7 +53,6 @@ unsigned long boilerOnTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
-unsigned long lastRunTime = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
 unsigned long motdExpiryTimer = 0;
 
@@ -175,8 +176,12 @@ void setup() {
   
   //Get the time and current set temp
   rtc.refresh();
-  lastScheduledTemp = getSetPoint();
-  currentSetTemp = lastScheduledTemp;
+  currentSched.elem.start = 1500;
+  currentSched.elem.temp = 1000;
+//  uint16_t mins = rtc.hour() * 60 + rtc.minute();
+//  getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
+//  lastScheduledTemp = currentSched.elem.temp;
+//  currentSetTemp = lastScheduledTemp;
   //Done set up
 #ifdef SERIAL_DEBUG
   Serial.println("go");
@@ -226,20 +231,38 @@ void loop() {
  
   //Retreive current set point in schedule
   if (currentMillis - lastGetSched > SCHED_CHECK_INTERVAL) {
-    float schedTemp = getSetPoint();
+    SchedUnion lastSched;
+    memcpy(&lastSched.raw, &currentSched.raw, sizeof(SchedByElem));
+    uint16_t mins = rtc.hour() * 60 + rtc.minute();
+    getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
+    if (memcmp(&currentSched.raw, &lastSched.raw, sizeof(SchedByElem)) == 0) {
+      //Schedule has changed - find next schedule
+      uint16_t minsNext = currentSched.elem.end;
+      if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
+        //Currently in default sched
+        minsNext = mins;
+      }
+      getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true); 
+      if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
+        //No more schedules for today (as returned the default schedule)
+        //Get first one tomorrow
+        int nextDay = rtc.dayOfWeek()+1;
+        if (nextDay > 7) nextDay = 1; 
+        getSetPoint(&nextSched, 0, nextDay, true);
+      }
+    }
 #ifdef SERIAL_DEBUG
     Serial.println("Scheduled set point: " + String(currentTemp, 1));
 #endif
-  
-    if (lastScheduledTemp != schedTemp) {
+    if (lastScheduledTemp != currentSched.elem.temp) {
       //Only override set temp if there is a schedule change (cos it may have been manually set)
-      currentSetTemp = schedTemp;
-      lastScheduledTemp = schedTemp;
+      currentSetTemp = currentSched.elem.temp;
+      lastScheduledTemp = currentSched.elem.temp;
       changedState = 1;
     }
   }
 
-  //Read switch inputs
+  //Read switch input
   changedState = readInputs(changedState);
 
   //Check for any commands from in-station
@@ -335,16 +358,13 @@ uint8_t readInputs(uint8_t changedState) {
 
 void addDefaultSchedule() {
   //Add a default schedule - in mem only
-  struct SchedByElem elem;
-  elem.day = 0;
-  elem.start = 0;
-  elem.end = 1440;
-  elem.temp = 130;
-  union SchedUnion sched;
-  sched.elem = elem;
-  memcpy(&schedules[0], &sched.raw, sizeof(SchedByElem));
+  defaultSchedule.elem.day = 0;
+  defaultSchedule.elem.start = 0;
+  defaultSchedule.elem.end = 1440;
+  defaultSchedule.elem.temp = 110;
+  memcpy(&schedules[0], &defaultSchedule.raw, sizeof(SchedByElem));
   noOfSchedules = 1;
-  defaultSchedule = true;
+  isDefaultSchedule = true;
 }
 
 uint8_t checkMasterMessages(uint8_t changedState) {
@@ -412,14 +432,17 @@ uint8_t checkMasterMessages(uint8_t changedState) {
           elem.end = payload.schedule.end;
           elem.temp = payload.schedule.temp;
           sched.elem = elem;
-          if (defaultSchedule) {
+          if (isDefaultSchedule) {
             //Overwrite the default
             noOfSchedules = 0;
-            defaultSchedule = false;
+            isDefaultSchedule = false;
           }
           memcpy(&schedules[noOfSchedules], &sched.raw, sizeof(SchedByElem));
           writeSchedule(noOfSchedules, &sched.raw[0]);
           noOfSchedules++;
+          if (motdExpiryTimer == 0) {
+            setDefaultMotd();
+          }
           //Write number of schedules at start address
           eepromWrite(0, noOfSchedules);
         break;
@@ -482,46 +505,63 @@ uint8_t checkMasterMessages(uint8_t changedState) {
 
 void displayState(uint8_t changedState) {
     //Display current status
-    String runTimeStr;
-    unsigned long runTime = getRunTime();
-    if (runTime != 0) {
-      unsigned long threeDigit = 6000000;
-      runTimeStr = "Run:";
-      if (runTime < threeDigit) {
-        runTimeStr += " ";
-      }
-      runTimeStr += getMinSec(runTime);
-      if ((lastRunTime < threeDigit && runTime >= threeDigit) || (lastRunTime >= threeDigit && runTime < threeDigit)) {
-        changedState = 2;
-      }
-  //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
-      lastRunTime = runTime;
-    } else {
-      //Show date
-      runTimeStr = getDateStr();
-    }
     if (changedState > 1) {
       lcd.clear();
     }
+    //Display Row 1 - Current time and temperature
     lcd.setCursor(0, 0);
     String dateTimeStr = getTimeStr();
     String currTempStr;
     currTempStr = String((float)(currentTemp / 10.0), 1) + "C";
-    if (currentTemp <= 100 && currentTemp > 0) {
+    if (currentTemp < 100 && currentTemp > 0) {
        currTempStr = "0" + currTempStr;
     } else if (currentTemp == 0) {
        currTempStr = " 0.0C";
     }
     lcd.print(dateTimeStr + "   " + currTempStr);
+    //Display row 2 - This is one of: Boiler on time + Set temp, Current date + Set Temp, Sched end or start time + Set Temp
     lcd.setCursor(0, 1);
+    char sp[] = " ";
+    char runTimeStr[11]; //10 chars on LCD + end of str
+    runTimeStr[0] = '\0';
+    if (rtc.second() % 2) {
+      //Show schedule end or next sched start
+      if (currentSched.elem.day == 0) { 
+        //Currently in the default schedule valid for all times, so show next sched start
+        char on[] = "ON @ HHMM";
+        getHoursMins(nextSched.elem.start, &on[5]);
+        strncat(&runTimeStr[0], &on[0], strlen(on));
+        strncat(&runTimeStr[9], sp, 1);
+      } else {
+        //Show end time of current sched
+        char off[] = "OFF @ HHMM";
+        getHoursMins(currentSched.elem.end, &off[6]);
+        strncat(runTimeStr, &off[0], strlen(off));
+      }
+    } else {
+      //Show boiler runtime or date
+      unsigned long runTime = getRunTime();
+      if (runTime != 0) {
+        //Boiler is on - display how long for on row 2
+        char run[] = "Run:MM:SS";
+        getMinSec(runTime, &run[4]);
+        strncat(runTimeStr, &run[0], strlen(run));
+        strncat(&runTimeStr[8], sp, 1);
+    //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
+      } else {
+        //Boiler not on - Show date
+        char * dt = &(getDateStr())[0];
+        strncat(&runTimeStr[0], dt, strlen(dt));
+      }
+    }
     String setTempStr;
     setTempStr = String((float)(currentSetTemp / 10.0), 1) + "C";
-    if (currentSetTemp <= 100 && currentSetTemp > 0) {
+    if (currentSetTemp < 100 && currentSetTemp > 0) {
        setTempStr = "0" + setTempStr;
     } else if (currentSetTemp == 0) {
        setTempStr = " 0.0C";
     }
-    lcd.print(runTimeStr + " Set:" + setTempStr);
+    lcd.print(String(runTimeStr) + " Set:" + setTempStr);
     lcd.setCursor(0, 2);
     char *boilerStatStr;
     if (strlen(windStr) != 0 && rtc.second() % 2) {
@@ -664,44 +704,50 @@ byte eepromRead(unsigned int eeaddress ) {
   return rdata;
 }
 
-  
-int16_t getSetPoint() {
-  //Get mins in day
-  uint16_t mins = rtc.hour() * 60 + rtc.minute();
+
+//Return the schedule ptr to the current schedule. or the next sched if asked for  
+void getSetPoint(SchedUnion *schedule, uint16_t mins, int currDay, bool nextSched) {
   //Find matching schedules and take one with the most specific day that matches
+  //if next sched is true look for the schedule with a start time closest to the current
   union SchedUnion sched;
   int priority = 0;
-  int temp = 90;
-  int currDay = rtc.dayOfWeek();
+  memcpy(&schedule->raw, &defaultSchedule.raw, sizeof(SchedByElem));
+  uint16_t nextMins = 1440;
   for (int i=0; i<noOfSchedules; i++) {
     memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
 //    Serial.println("Sched: " + sched.elem.day + String(" ") + sched.elem.temp);
-
-    if (sched.elem.start <= mins && sched.elem.end > mins) {
+    if (!nextSched && sched.elem.start == 0000 && sched.elem.end == 0000 
+              && sched.elem.day == 0 && priority == 0) {
+      //This sched matches everything
+      memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
+    } else if ((!nextSched && sched.elem.start <= mins && sched.elem.end > mins) || 
+        (nextSched && sched.elem.start > mins && sched.elem.start < nextMins)) {
       if (sched.elem.day == 0 && priority <= 1) {
         //All days match and not found higher
-          priority = 1;
-          temp = sched.elem.temp; 
-//          Serial.println("Set 0: " + temp);
+        priority = 1;
+        nextMins = sched.elem.start;      
+        memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
       if (sched.elem.day == 0x200 && (currDay == 7 || currDay == 1) && priority <= 2) {
         //Its the weekend and not found higher
-          priority = 2;
-          temp = sched.elem.temp; 
+        priority = 2;
+        nextMins = sched.elem.start;      
+        memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
       if (sched.elem.day == 0x100 && (currDay >= 2 || currDay <= 6) && priority <= 2) {
         //Its a weekday and not found higher
-          priority = 2;
-          temp = sched.elem.temp; 
+        priority = 2;
+        nextMins = sched.elem.start;      
+        memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
       if (sched.elem.day == currDay && priority <= 3) {
         //Found a specific day - cant get higher
-          priority = 3;
-          temp = sched.elem.temp; 
+        priority = 3;
+        nextMins = sched.elem.start;      
+        memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
     }
   }
-  return temp;
 }
 
 //Calculate the number of ms to reach set temp
@@ -723,20 +769,36 @@ unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
   return noMs;
 }
 
-String getMinSec(unsigned long timeMs) {
+void getHoursMins(unsigned long tmins, char *charBuf) {
+  unsigned long hours = tmins/60;
+  unsigned long mins = tmins % 60;
+  sprintf(charBuf, "%02d", hours);
+  sprintf(charBuf+2, "%02d", mins);
+}
+
+void getMinSec(unsigned long timeMs, char *charBuf) {
   unsigned long tsecs = timeMs/1000;
   unsigned long mins = tsecs/60;
   unsigned long secs = tsecs % 60;
-  String timeStr = "";
-  if (mins < 10) {
-    timeStr += "0";
+  if (mins < 60) {
+    sprintf(charBuf, "%02d:", mins);
+    sprintf(charBuf+3, "%02d", secs);
+  } else {
+    unsigned long hours = mins / 60;
+    unsigned long remMins = mins % 60;
+    sprintf(charBuf, "%02d:", hours);
+    sprintf(charBuf+3, "%02d", remMins);
   }
-  timeStr += String(mins, DEC) + ":";
-  if (secs < 10) {
-    timeStr += "0";
-  }
-  timeStr += String(secs, DEC);
-  return timeStr;
+//  String timeStr = "";
+//  if (mins < 10) {
+//    timeStr += "0";
+//  }
+//  timeStr += String(mins, DEC) + ":";
+//  if (secs < 10) {
+//    timeStr += "0";
+//  }
+//  timeStr += String(secs, DEC);
+//  return timeStr;
 }
 
 String getTimeStr() {

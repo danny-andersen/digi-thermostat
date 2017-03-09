@@ -73,7 +73,7 @@
 //Struct is long word padded...
 struct SchedByElem {
     uint16_t day; //= "0" for every day, "0x0100" for Weekday (Mon - Fri), 
-                  //"0x0200" for Weekend (Sat, Sun), 1 - Monday, 2 - Tuesday,....7 - Sunday
+                  //"0x0200" for Weekend (Sat, Sun), 1 - Sunday, 2 - Monday, 3 - Tuesday,....7 - Saturday
     uint16_t start; //Start minute (0 - 1440) 
     uint16_t end; //End time minute (0 - 1440)
     int16_t temp; //Set temperature tenths of C, 180 = 18.0C
