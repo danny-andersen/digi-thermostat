@@ -171,7 +171,10 @@ bool sendMotd() {
 	    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
 		printf("Failed to write motd message\n");
 		status = false;
-	    } 
+	    } else {
+	        //Delete file, so it doesn't get resent if we restart
+	        remove(MOTD_FILE);
+	    }	 
 	}
     }
     return status;
@@ -222,7 +225,10 @@ bool sendExtTemp() {
 	if (!network.write(header, &payload, sizeof(Content))) {
 	    printf("Failed to write set External Temp message\n");
 	    status = false;
-	} 
+	} else {
+	    //Delete file, so it doesn't get resent if we restart
+	    remove(EXTTEMP_FILE);
+        }	 
     }
     return status;
 }
@@ -243,7 +249,10 @@ bool sendSetTemp() {
 	if (!network.write(header, &payload, sizeof(Content))) {
 	    printf("Failed to write setTemp message\n");
 	    status = false;
-	} 
+	} else {
+	    //Delete file, so it doesn't get resent if we restart
+	    remove(SET_TEMP_FILE);
+        }	 
     }
     return status;
 }
