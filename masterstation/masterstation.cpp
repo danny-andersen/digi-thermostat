@@ -275,25 +275,25 @@ bool sendSched() {
 	    part[pos] = '\0';
 	    schedPayload.schedule.day = 0xFF;
 	    if (strcmp(part, "Mon-Sun") == 0) {
-		schedPayload.schedule.day = 0x00;
+		schedPayload.schedule.day = 0x0000;
 	    } else if (strcmp(part, "Mon-Fri") == 0) {
 		schedPayload.schedule.day = 0x0100;
 	    } else if (strcmp(part, "Sat-Sun") == 0) {
 		schedPayload.schedule.day = 0x0200;
 	    } else if (strcmp(part, "Mon") == 0) {
-		schedPayload.schedule.day = 0x0001;
-	    } else if (strcmp(part, "Tue") == 0) {
 		schedPayload.schedule.day = 0x0002;
-	    } else if (strcmp(part, "Wed") == 0) {
+	    } else if (strcmp(part, "Tue") == 0) {
 		schedPayload.schedule.day = 0x0003;
-	    } else if (strcmp(part, "Thu") == 0) {
+	    } else if (strcmp(part, "Wed") == 0) {
 		schedPayload.schedule.day = 0x0004;
-	    } else if (strcmp(part, "Fri") == 0) {
+	    } else if (strcmp(part, "Thu") == 0) {
 		schedPayload.schedule.day = 0x0005;
-	    } else if (strcmp(part, "Sat") == 0) {
+	    } else if (strcmp(part, "Fri") == 0) {
 		schedPayload.schedule.day = 0x0006;
-	    } else if (strcmp(part, "Sun") == 0) {
+	    } else if (strcmp(part, "Sat") == 0) {
 		schedPayload.schedule.day = 0x0007;
+	    } else if (strcmp(part, "Sun") == 0) {
+		schedPayload.schedule.day = 0x0001;
 	    } else {
 	       printf("Unidentified Day specified in schedule: %s", part);
 	    } 
