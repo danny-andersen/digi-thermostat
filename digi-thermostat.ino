@@ -1,4 +1,4 @@
-#include <Wire.h>
+  #include <Wire.h>
 #include <uRTCLib.h>
   
 #include <DallasTemperature.h>
@@ -40,6 +40,8 @@ boolean isDefaultSchedule = false;
 SchedUnion defaultSchedule;
 SchedUnion currentSched;
 SchedUnion nextSched;
+HolidayUnion holiday;
+boolean onHoliday = FALSE;
 boolean heatOn = FALSE;
 int16_t degPerHour = 50; //Default heating power - 5C per hour increase
 int16_t extAdjustment = 50; //Weighting of difference between external and internal temp, e.g. if 10 deg diff (100/50) = -2deg
@@ -168,6 +170,16 @@ void setup() {
       cnt++;
     }
   }
+  holiday.elem.valid = 0;
+  //Go to end of schedule storage area and see if a holiday has been stored
+  cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+  if (eepromRead(cnt) == 1) {
+    //Holiday has been set
+    for (int j=0; j<sizeof(SchedByElem); j++) {
+      holiday.raw[j] = eepromRead(cnt);
+      cnt++;
+    }
+  }
   if (noOfSchedules == 0) {
     addDefaultSchedule();
   }
@@ -228,33 +240,42 @@ void loop() {
 #ifdef SERIAL_DEBUG
   Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 #endif
- 
+
   //Retreive current set point in schedule
   if (currentMillis - lastGetSched > SCHED_CHECK_INTERVAL) {
-    SchedUnion lastSched;
-    memcpy(&lastSched.raw, &currentSched.raw, sizeof(SchedByElem));
-    uint16_t mins = rtc.hour() * 60 + rtc.minute();
-    getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
-    if (memcmp(&currentSched.raw, &lastSched.raw, sizeof(SchedByElem)) == 0) {
-      //Schedule has changed - find next schedule
-      uint16_t minsNext = currentSched.elem.end;
-      if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
-        //Currently in default sched
-        minsNext = mins;
+    lastGetSched = currentMillis;
+    int16_t currentSchedTemp;
+    //Check if on hols
+    onHoliday = checkOnHoliday();
+    if (onHoliday) {
+      currentSchedTemp = holiday.elem.holidayTemp;
+    } else {
+      SchedUnion lastSched;
+      memcpy(&lastSched.raw, &currentSched.raw, sizeof(SchedByElem));
+      uint16_t mins = rtc.hour() * 60 + rtc.minute();
+      getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
+      if (memcmp(&currentSched.raw, &lastSched.raw, sizeof(SchedByElem)) == 0) {
+        //Schedule has changed - find next schedule
+        uint16_t minsNext = currentSched.elem.end;
+        if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
+          //Currently in default sched
+          minsNext = mins;
+        }
+        getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true); 
+        if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
+          //No more schedules for today (as returned the default schedule)
+          //Get first one tomorrow
+          int nextDay = rtc.dayOfWeek()+1;
+          if (nextDay > 7) nextDay = 1; 
+          getSetPoint(&nextSched, 0, nextDay, true);
+        }
+        currentSchedTemp = currentSched.elem.temp;
       }
-      getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true); 
-      if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
-        //No more schedules for today (as returned the default schedule)
-        //Get first one tomorrow
-        int nextDay = rtc.dayOfWeek()+1;
-        if (nextDay > 7) nextDay = 1; 
-        getSetPoint(&nextSched, 0, nextDay, true);
-      }
+  #ifdef SERIAL_DEBUG
+      Serial.println("Scheduled set point: " + String(currentTemp, 1));
+  #endif
     }
-#ifdef SERIAL_DEBUG
-    Serial.println("Scheduled set point: " + String(currentTemp, 1));
-#endif
-    if (lastScheduledTemp != currentSched.elem.temp) {
+    if (lastScheduledTemp != currentSchedTemp) {
       //Only override set temp if there is a schedule change (cos it may have been manually set)
       currentSetTemp = currentSched.elem.temp;
       lastScheduledTemp = currentSched.elem.temp;
@@ -267,8 +288,6 @@ void loop() {
 
   //Check for any commands from in-station
   changedState = checkMasterMessages(changedState);
-
-  //Report back current status to in-station via RF transmitter regularly
 
   //If not in boost mode, turn heating on or off depending on temp
   if (boostTimer == 0) {
@@ -481,10 +500,12 @@ uint8_t checkMasterMessages(uint8_t changedState) {
 //        Serial.println("Rx Time: " + payload.dateTime.hour + 
 //                    payload.dateTime.min + payload.dateTime.sec + payload.dateTime.year);
         rtc.refresh();
-//        Serial.println("Clk Time: " + rtc.hour() + 
-//                    rtc.minute() + rtc.second());
         break;
-
+      case (SET_HOLIDAY_MSG):
+        memcpy(&holiday.raw[0], &payload.holiday.raw[0], sizeof(HolidayByElem));
+        Serial.println("Rx Holiday: " + holiday.elem.startDate.dayOfMonth + holiday.elem.endDate.dayOfMonth);
+        break;
+      
     }
     flickerLED();
     if (sendStatus) {
@@ -492,6 +513,8 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       response.status.setTemp = currentSetTemp;
       response.status.heatOn = (byte)heatOn;
       response.status.minsToSet = (uint16_t) (getRunTime() / 60000);
+      response.status.extTemp = extTemp;
+      response.status.noOfSchedules = noOfSchedules;
 //      Serial.println("Sending status msg");
       respHeader.type = STATUS_MSG;
       if (!network.write(respHeader, &response, sizeof(Content))) {
@@ -749,6 +772,46 @@ void getSetPoint(SchedUnion *schedule, uint16_t mins, int currDay, bool nextSche
     }
   }
 }
+
+boolean checkOnHoliday() {
+  HolidayDateStr *hols;
+  boolean afterStart = FALSE;
+  boolean beforeEnd = FALSE;
+  hols = &(holiday.elem.startDate);
+  if (rtc.year() > hols->year) {
+    afterStart = TRUE;
+  } else if (rtc.year() == hols->year) {
+    if (rtc.month() > hols->month) {
+      afterStart = TRUE;
+    } else if (rtc.month() == hols->month) {
+      if (rtc.day() > hols->dayOfMonth) {
+        afterStart = TRUE;
+      } else if (rtc.day() == hols->dayOfMonth) {
+        if (rtc.hour() >= hols->hour) {
+          afterStart = TRUE;
+        }
+      }
+    }
+  }
+  hols = &(holiday.elem.endDate);
+  if (rtc.year() < hols->year) {
+    beforeEnd = TRUE;
+  } else if (rtc.year() == hols->year) {
+    if (rtc.month() < hols->month) {
+      beforeEnd = TRUE;
+    } else if (rtc.month() == hols->month) {
+      if (rtc.day() < hols->dayOfMonth) {
+        beforeEnd = TRUE;
+      } else if (rtc.day() == hols->dayOfMonth) {
+        if (rtc.hour() < hols->hour) {
+          beforeEnd = TRUE;
+        }
+      }
+    }
+  }
+  return (afterStart && beforeEnd);
+}
+
 
 //Calculate the number of ms to reach set temp
 unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {

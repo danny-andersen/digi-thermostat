@@ -59,6 +59,7 @@
 #define DELETE_ALL_SCHEDULES_MSG  9
 #define DELETE_SCHEDULE_MSG  10
 #define SET_DATE_TIME_MSG  11
+#define SET_HOLIDAY_MSG  12
 
 #define RESPONSE_TIMEOUT_MS 1000
 
@@ -84,12 +85,43 @@ union SchedUnion {
   uint8_t raw[sizeof(SchedByElem)];
 };
 
+struct DateTimeStruct {
+  uint8_t sec;
+  uint8_t min;
+  uint8_t hour;
+  uint8_t dayOfWeek;
+  uint8_t dayOfMonth;
+  uint8_t month;
+  uint8_t year;
+}; 
+
+struct HolidayDateStr {
+  uint8_t hour;
+  uint8_t dayOfMonth;
+  uint8_t month;
+  uint8_t year;
+};
+
+struct HolidayByElem {
+    struct HolidayDateStr startDate;
+    struct HolidayDateStr endDate;
+    int16_t holidayTemp;
+    uint8_t valid; //Set to 1 if valid
+};
+
+union HolidayUnion {
+  HolidayByElem elem;
+  uint8_t raw[sizeof(HolidayByElem)];
+};
+
 union Content {
     struct Status {
       int16_t currentTemp;
       int16_t setTemp;
       uint8_t heatOn;
       uint8_t minsToSet;
+      int16_t extTemp;
+      uint8_t noOfSchedules;
     } status;
     struct SetTemp {
       int16_t setTemp;
@@ -106,16 +138,9 @@ union Content {
       char motdStr[MAX_MOTD_SIZE]; //Message of the day, having max of 64 chars
       unsigned long expiry; //Number of millis after which message expires
     } motd;
-    struct DateTimeStruct {
-      uint8_t sec;
-      uint8_t min;
-      uint8_t hour;
-      uint8_t dayOfWeek;
-      uint8_t dayOfMonth;
-      uint8_t month;
-      uint8_t year;
-    } dateTime;
+    DateTimeStruct dateTime;
+    HolidayUnion holiday;
+    //Note no update schedule message as is an exact match and must be deleted and inserted to update
     SchedByElem schedule; //supports delete, insert, retreive. 
-    //Note no update: schedule is an exact match and must be deleted and inserted to update
 };
 
