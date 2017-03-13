@@ -1,4 +1,4 @@
-  #include <Wire.h>
+#include <Wire.h>
 #include <uRTCLib.h>
   
 #include <DallasTemperature.h>
@@ -88,11 +88,6 @@ char motdScrolled[LCD_COLS+1]; //Buffer used to scroll motd on LCD
 int8_t scrollPos = 0;
 
 void setup() {
-#ifdef SERIAL_DEBUG
-  Serial.begin(115200);
-  printf_begin();
-  while (!Serial); 
-#endif      
 //  Serial.begin(115200);
 //  printf_begin();
 //  while (!Serial); 
@@ -170,19 +165,22 @@ void setup() {
       cnt++;
     }
   }
+  if (noOfSchedules == 0) {
+    addDefaultSchedule();
+  }
+
   holiday.elem.valid = 0;
   //Go to end of schedule storage area and see if a holiday has been stored
   cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
   if (eepromRead(cnt) == 1) {
     //Holiday has been set
-    for (int j=0; j<sizeof(SchedByElem); j++) {
+    cnt++;
+    for (int j=0; j<sizeof(HolidayByElem); j++) {
       holiday.raw[j] = eepromRead(cnt);
       cnt++;
     }
   }
-  if (noOfSchedules == 0) {
-    addDefaultSchedule();
-  }
+//  Serial.println("holiday? " + String(holiday.elem.valid) + " start day: " + String(holiday.elem.startDate.dayOfMonth));
 
   setDefaultMotd();
   
@@ -195,9 +193,7 @@ void setup() {
 //  lastScheduledTemp = currentSched.elem.temp;
 //  currentSetTemp = lastScheduledTemp;
   //Done set up
-#ifdef SERIAL_DEBUG
-  Serial.println("go");
-#endif
+//  Serial.println("go");
   //Turn power led RED to indicate running
   digitalWrite(GREEN_LED, LOW);
 }
@@ -215,12 +211,10 @@ void loop() {
     lastRTCRead = currentMillis;
     changedState = 1;
   }
-#ifdef SERIAL_DEBUG
-  Serial.print(getDateStr());
-  Serial.print(" ");
-  Serial.print(getTimeStr());
-  Serial.print("\n");
-#endif
+//  Serial.print(getDateStr());
+//  Serial.print(" ");
+//  Serial.print(getTimeStr());
+//  Serial.print("\n");
 
   if (boostTimer > 0) {
     if (boostTimer > loopDelta) {
@@ -237,9 +231,7 @@ void loop() {
     lastTempRead = currentMillis;
     changedState = 1;
   }
-#ifdef SERIAL_DEBUG
-  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
-#endif
+//  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 
   //Retreive current set point in schedule
   if (currentMillis - lastGetSched > SCHED_CHECK_INTERVAL) {
@@ -248,7 +240,12 @@ void loop() {
     //Check if on hols
     onHoliday = checkOnHoliday();
     if (onHoliday) {
-      currentSchedTemp = holiday.elem.holidayTemp;
+      if (lastScheduledTemp != holiday.elem.holidayTemp) {
+        //Override set temp with holiday temp. Note that this can be overriden manually
+        currentSetTemp = holiday.elem.holidayTemp;
+        lastScheduledTemp = holiday.elem.holidayTemp;
+        changedState = 1;
+      }
     } else {
       SchedUnion lastSched;
       memcpy(&lastSched.raw, &currentSched.raw, sizeof(SchedByElem));
@@ -271,15 +268,14 @@ void loop() {
         }
         currentSchedTemp = currentSched.elem.temp;
       }
-  #ifdef SERIAL_DEBUG
-      Serial.println("Scheduled set point: " + String(currentTemp, 1));
-  #endif
-    }
-    if (lastScheduledTemp != currentSchedTemp) {
-      //Only override set temp if there is a schedule change (cos it may have been manually set)
-      currentSetTemp = currentSched.elem.temp;
-      lastScheduledTemp = currentSched.elem.temp;
-      changedState = 1;
+//      Serial.println("Scheduled set point: " + String(currentTemp, 1));
+      if (lastScheduledTemp != currentSchedTemp) {
+        //Only override set temp if there is a schedule change (cos it may have been manually set)
+        currentSetTemp = currentSched.elem.temp;
+        lastScheduledTemp = currentSched.elem.temp;
+        changedState = 1;
+      }
+
     }
   }
 
@@ -437,9 +433,7 @@ uint8_t checkMasterMessages(uint8_t changedState) {
             response.schedule.end = sched.elem.end;
             response.schedule.temp = sched.elem.temp;
             //Send to master
-            if (!network.write(respHeader, &response, sizeof(Content))) {
-              Serial.println("Send of sched failed");
-            }
+            network.write(respHeader, &response, sizeof(Content));
             delay(100);
           }
         break;
@@ -503,7 +497,18 @@ uint8_t checkMasterMessages(uint8_t changedState) {
         break;
       case (SET_HOLIDAY_MSG):
         memcpy(&holiday.raw[0], &payload.holiday.raw[0], sizeof(HolidayByElem));
-        Serial.println("Rx Holiday: " + holiday.elem.startDate.dayOfMonth + holiday.elem.endDate.dayOfMonth);
+//        Serial.println("Rx Holiday: start:" + String(holiday.elem.startDate.year) + "-" + String(holiday.elem.startDate.dayOfMonth) + " endDay:" + String(holiday.elem.endDate.dayOfMonth));
+        //Save in eeprom
+        int cnt;
+        cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+        eepromWrite(cnt, 1); //Set holiday as valid
+        cnt++;
+        byte *hols;
+        hols = &payload.holiday.raw[0];
+        for (int j=0; j<sizeof(HolidayByElem); j++) {
+            eepromWrite(cnt, *hols++);
+            cnt++;
+        }
         break;
       
     }
@@ -549,7 +554,9 @@ void displayState(uint8_t changedState) {
     runTimeStr[0] = '\0';
     if (rtc.second() % 2) {
       //Show schedule end or next sched start
-      if (currentSched.elem.day == 0) { 
+      if (onHoliday) {
+        strncat(runTimeStr, "On hols!!!", 10);
+      } else if (currentSched.elem.day == 0) { 
         //Currently in the default schedule valid for all times, so show next sched start
         char on[] = "ON @ HHMM";
         getHoursMins(nextSched.elem.start, &on[5]);
@@ -777,36 +784,46 @@ boolean checkOnHoliday() {
   HolidayDateStr *hols;
   boolean afterStart = FALSE;
   boolean beforeEnd = FALSE;
-  hols = &(holiday.elem.startDate);
-  if (rtc.year() > hols->year) {
-    afterStart = TRUE;
-  } else if (rtc.year() == hols->year) {
-    if (rtc.month() > hols->month) {
+  if (holiday.elem.valid == 1) {
+    hols = &(holiday.elem.startDate);
+    if (rtc.year() > hols->year) {
       afterStart = TRUE;
-    } else if (rtc.month() == hols->month) {
-      if (rtc.day() > hols->dayOfMonth) {
+    } else if (rtc.year() == hols->year) {
+      if (rtc.month() > hols->month) {
         afterStart = TRUE;
-      } else if (rtc.day() == hols->dayOfMonth) {
-        if (rtc.hour() >= hols->hour) {
+      } else if (rtc.month() == hols->month) {
+        if (rtc.day() > hols->dayOfMonth) {
           afterStart = TRUE;
+        } else if (rtc.day() == hols->dayOfMonth) {
+          if (rtc.hour() >= hols->hour) {
+            afterStart = TRUE;
+          }
         }
       }
     }
-  }
-  hols = &(holiday.elem.endDate);
-  if (rtc.year() < hols->year) {
-    beforeEnd = TRUE;
-  } else if (rtc.year() == hols->year) {
-    if (rtc.month() < hols->month) {
+    hols = &(holiday.elem.endDate);
+    if (rtc.year() < hols->year) {
       beforeEnd = TRUE;
-    } else if (rtc.month() == hols->month) {
-      if (rtc.day() < hols->dayOfMonth) {
+    } else if (rtc.year() == hols->year) {
+      if (rtc.month() < hols->month) {
         beforeEnd = TRUE;
-      } else if (rtc.day() == hols->dayOfMonth) {
-        if (rtc.hour() < hols->hour) {
+      } else if (rtc.month() == hols->month) {
+        if (rtc.day() < hols->dayOfMonth) {
           beforeEnd = TRUE;
+        } else if (rtc.day() == hols->dayOfMonth) {
+          if (rtc.hour() < hols->hour) {
+            beforeEnd = TRUE;
+          }
         }
       }
+    }
+//    Serial.println("after start:" + String(afterStart) + " before end:" + String(beforeEnd));
+    if (!beforeEnd) {
+      //Holiday is over - remove it
+      holiday.elem.valid = 0;
+      int cnt;
+      cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+      eepromWrite(cnt, 0); //Set holiday as invalid
     }
   }
   return (afterStart && beforeEnd);
