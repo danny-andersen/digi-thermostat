@@ -66,6 +66,7 @@
 #define SCHEDULE_FILE "schedule.txt"
 #define EXTTEMP_FILE "setExtTemp.txt"
 #define SET_TEMP_FILE "setTemp.txt"
+#define HOLIDAY_FILE "holiday.txt"
 
 #define MAX_MOTD_SIZE 64
 #define MAX_WIND_SIZE 12

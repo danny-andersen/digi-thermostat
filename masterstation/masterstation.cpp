@@ -47,6 +47,7 @@ bool sendSched();
 bool getStatus();
 bool sendExtTemp();
 bool sendSetTemp();
+bool sendHoliday();
 bool sendTime(time_t secs);
 
 int main(int argc, char** argv){
@@ -72,6 +73,7 @@ int main(int argc, char** argv){
   int tempSentTime = 0;
   time_t sentTime = 0;
   time_t statusTime = 0;
+  time_t holidaySentTime = 0;
   bool networkUp = false;
   sleep(1);
   while(1) {
@@ -117,6 +119,14 @@ int main(int argc, char** argv){
 	    } else {
 		networkUp = false;
 	    }
+	} else if (networkUp && stat(HOLIDAY_FILE,&fileStat) >= 0 
+		&& fileStat.st_mtime > holidaySentTime) {
+	    if (sendHoliday()) {
+	        holidaySentTime = fileStat.st_mtime;
+		networkUp = true;
+	    } else {
+		networkUp = false;
+	    }
 	} else {
 	    time_t secs = time(NULL);
 	    if (networkUp && abs(secs - sentTime) > (int)SEND_TIME_INTERVAL) {
@@ -142,20 +152,22 @@ int main(int argc, char** argv){
 
 bool getSched() {
     //Get current scheds
+    bool status = false;
     RF24NetworkHeader schedHeader(DIGI_THERM_NODE_ID);
     Content schedPayload;
     schedHeader.type = GET_SCHEDULES_MSG;
     if (!network.write(schedHeader, &schedPayload, sizeof(Content))) {
 	printf("Failed to send req schedule message\n");
-	return false;
-    } 
-    return true;
+    } else {
+	status = true;
+    }
+    return status;
 }
 
 bool sendMotd() {
     FILE *fmotd;
     fmotd = fopen(MOTD_FILE, "r");
-    bool status = true;
+    bool status = false;
     if (fmotd != NULL) {
 	RF24NetworkHeader motdHeader(DIGI_THERM_NODE_ID);
 	Content motdPayload;
@@ -170,10 +182,10 @@ bool sendMotd() {
 	    motdHeader.type = MOTD_MSG;
 	    if (!network.write(motdHeader, &motdPayload, sizeof(Content))) {
 		printf("Failed to write motd message\n");
-		status = false;
 	    } else {
 	        //Delete file, so it doesn't get resent if we restart
 	        remove(MOTD_FILE);
+		status = true;
 	    }	 
 	}
     }
@@ -182,7 +194,7 @@ bool sendMotd() {
 
 bool sendTime(time_t secs) {
     struct tm *t = localtime(&secs);
-    bool status = true;
+    bool status = false;
     RF24NetworkHeader header(DIGI_THERM_NODE_ID);
     header.type = SET_DATE_TIME_MSG;
     Content payload;
@@ -197,7 +209,9 @@ bool sendTime(time_t secs) {
     if (!network.write(header, &payload, sizeof(Content))) {
 	printf("Failed to write time message\n");
 	status = false;
-    } 
+    } else {
+	status = true;
+    }
     return status;
 }
 
@@ -228,6 +242,7 @@ bool sendExtTemp() {
 	} else {
 	    //Delete file, so it doesn't get resent if we restart
 	    remove(EXTTEMP_FILE);
+	    status = true;
         }	 
     }
     return status;
@@ -252,8 +267,68 @@ bool sendSetTemp() {
 	} else {
 	    //Delete file, so it doesn't get resent if we restart
 	    remove(SET_TEMP_FILE);
+	    status = true;
         }	 
     }
+    return status;
+}
+
+bool sendHoliday() {
+    bool status = true;
+    FILE *fhols;
+    fhols = fopen(HOLIDAY_FILE, "r");
+    char * line = NULL;
+    size_t len = 0;
+    ssize_t read;
+    //Read line, split by "," and then fill payload and send
+    Content msg;
+    int lineCnt = 0;
+    while ((read = getline(&line, &len, fhols)) != -1) {
+        printf("%s", line);
+        char part[32];
+	//Get first comma
+        int pos = strcspn(line, ",");
+        strncpy(part, line, pos);
+        part[pos] = '\0';
+	pos++;
+	bool start = false;
+        bool end = false;
+	if (strcmp(part, "Start") == 0) start = true;
+	else if (strcmp(part, "End") == 0) end = true;
+	if (start || end) {
+	    int syear, sday, smonth, shour;
+	    sscanf(&line[pos], "%02d,%02d,%02d,%02d",&syear,&smonth,&sday,&shour);
+	    HolidayDateStr *dt;
+	    if (start) dt = &msg.holiday.elem.startDate;
+	    else dt = &msg.holiday.elem.endDate;
+	    dt->year = syear;
+ 	    dt->month = smonth;
+	    dt->dayOfMonth = sday;
+	    dt->hour = shour;
+	    printf("start: %d, %d-%d-%d %d\n",start,dt->year,dt->month,dt->dayOfMonth,dt->hour);
+	} else if (strcmp(part, "Temp") == 0) {
+	    //temp line
+	    float temp;
+	    sscanf(&line[pos], "%f",&temp);
+	    printf("temp: %f\n",temp);
+	    msg.holiday.elem.holidayTemp = temp * 10;
+	}
+	lineCnt++;
+    }
+    if (lineCnt >= 3) {
+	msg.holiday.elem.valid = 1;
+	printf("Sending holiday msg temp: %d\n",msg.holiday.elem.holidayTemp);
+	//Send holiday
+	RF24NetworkHeader header(DIGI_THERM_NODE_ID);
+	header.type = SET_HOLIDAY_MSG;
+	if (!network.write(header, &msg, sizeof(Content))) {
+	    printf("Failed to send holiday message\n");
+	    status = false;
+	} else {
+	    status = true;
+        }
+    }	
+    free(line);
     return status;
 }
 
@@ -322,7 +397,9 @@ bool sendSched() {
 	 	    printf("Failed to send new schedule message\n");
 		    status = false;
 		    break; //quit while
-	        }
+	        } else {
+		    status = true;
+  		}
 		//Give it time to write it to EEPROM
 		delay(400);
 	    }
@@ -343,10 +420,16 @@ bool readMessage() {
 	    retStatus = true;
 	    FILE *fs;
 	    fs = fopen("status.txt", "w+");
-	    fprintf(fs,"Current temp: %d\n", payload.status.currentTemp); 
-	    fprintf(fs,"Current set temp: %d\n", payload.status.setTemp); 
+	    fprintf(fs,"Current temp: %.2f\n", payload.status.currentTemp/10.0); 
+	    fprintf(fs,"Current set temp: %.2f\n", payload.status.setTemp/10.0); 
 	    fprintf(fs,"Heat on? %s\n", payload.status.heatOn == 0 ? "No" : "Yes"); 
 	    fprintf(fs,"Mins to set temp: %d\n", payload.status.minsToSet); 
+	    if (payload.status.extTemp < 1000) {
+	    	fprintf(fs,"External temp: %.2f\n", payload.status.extTemp/10.0); 
+	    } else {
+	    	fprintf(fs,"External temp: Not Set\n");
+	    }
+	    fprintf(fs,"No of Schedules: %d\n", payload.status.noOfSchedules); 
 	    fclose(fs);
 	break;
       case (SCHEDULE_MSG):
