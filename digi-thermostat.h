@@ -15,7 +15,6 @@
 
 #define ON  1
 #define OFF  0
-//#define SERIAL_DEBUG
 #define LOOP_DELAY 50
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL
