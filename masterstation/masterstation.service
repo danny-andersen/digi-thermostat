@@ -1,0 +1,12 @@
+[Unit]
+Description=Masterstation to send commands to Digital thermostat
+
+[Service]
+#Environment= MY_ENVIRONMENT_VAR =/path/to/file.config
+WorkingDirectory=/home/pi/sketchbook/digi-thermostat/masterstation
+ExecStart=/home/pi/sketchbook/digi-thermostat/masterstation/masterstation
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
