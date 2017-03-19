@@ -1,0 +1,73 @@
+<Layout Type="Stripboard" Width="37" Height="24" Project="Digi-Thermostat" Credits="Danny Andersen" HideList="False">
+	<IC Value="Arduino-Nano" X1="23" Y1="1" X2="29" Y2="15" Name="IC1"/>
+	<Text Value="5V" X1="18" Y1="23" Name="A1"/>
+	<Text Value="0V" X1="18" Y1="18" Name="A2"/>
+	<Transformer Value="Hi-Link 240-5V" X1="5" Y1="18" X2="17" Y2="24" Name="TR1"/>
+	<LineIC Value="TinyRTC Module" X1="17" Y1="6" X2="17" Y2="10" Name="RTC1"/>
+	<Text Value="SDA" X1="19" Y1="8" Name="SDA"/>
+	<Text Value="SCL" X1="19" Y1="9" Name="A3"/>
+	<Resistor Value="10" X1="30" Y1="11" X2="30" Y2="19" Name="R1"/>
+	<Resistor Value="10" X1="31" Y1="10" X2="31" Y2="19" Name="R2"/>
+	<Capacitor Value="0.00822uF" X1="32" Y1="11" X2="32" Y2="12" Name="C1"/>
+	<Capacitor Value="0.00822uF" X1="33" Y1="10" X2="33" Y2="12" Name="C2"/>
+	<Resistor Value="5" X1="34" Y1="8" X2="34" Y2="19" Name="R3"/>
+	<Jumper X1="18" Y1="6" X2="18" Y2="18" Name="J1"/>
+	<Jumper X1="19" Y1="7" X2="19" Y2="19" Name="J2"/>
+	<Resistor Value="1KR" X1="30" Y1="6" X2="34" Y2="6" Name="R4"/>
+	<Resistor Value="1KR" X1="30" Y1="5" X2="34" Y2="5" Name="R5"/>
+	<Jumper X1="24" Y1="12" X2="24" Y2="19" Name="J3"/>
+	<Jumper X1="25" Y1="14" X2="25" Y2="18" Name="J4"/>
+	<Cut X1="32" Y1="5" Name="X1"/>
+	<Cut X1="32" Y1="6" Name="X2"/>
+	<Jumper X1="28" Y1="12" X2="28" Y2="18" Name="J5"/>
+	<LineIC Value="Sockets" X1="37" Y1="1" X2="37" Y2="13" Name="IO1"/>
+	<LineIC Value="Sockets" X1="21" Y1="1" X2="21" Y2="4" Name="IO2"/>
+	<Cut X1="19" Y1="6" Name="X3"/>
+	<Cut X1="20" Y1="7" Name="X4"/>
+	<Text Value="5V" X1="18" Y1="19" Name="5V"/>
+	<Jumper X1="21" Y1="19" X2="21" Y2="23" Name="J6"/>
+	<Jumper X1="23" Y1="18" X2="23" Y2="21" Name="J7"/>
+	<Text Value="0V" X1="18" Y1="22" Name="0V"/>
+	<LineIC Value="Sockets" X1="37" Y1="21" X2="32" Y2="21" Name="0V"/>
+	<LineIC Value="Sockets" X1="37" Y1="23" X2="32" Y2="23" Name="5V"/>
+	<LineIC Value="Screw Terminals x2" X1="5" Y1="9" X2="5" Y2="11" Name="240V"/>
+	<Cut X1="7" Y1="20" Name="X5"/>
+	<Cut X1="7" Y1="22" Name="X6"/>
+	<Cut X1="20" Y1="10" Name="X7"/>
+	<Cut X1="26" Y1="1" Name="X8"/>
+	<Cut X1="26" Y1="2" Name="X9"/>
+	<Cut X1="26" Y1="3" Name="X10"/>
+	<Cut X1="26" Y1="4" Name="X11"/>
+	<Cut X1="26" Y1="5" Name="X12"/>
+	<Cut X1="26" Y1="6" Name="X13"/>
+	<Cut X1="26" Y1="7" Name="X14"/>
+	<Cut X1="26" Y1="8" Name="X15"/>
+	<Cut X1="26" Y1="9" Name="X16"/>
+	<Cut X1="26" Y1="10" Name="X17"/>
+	<Cut X1="26" Y1="11" Name="X18"/>
+	<Cut X1="26" Y1="12" Name="X19"/>
+	<Cut X1="26" Y1="13" Name="X20"/>
+	<Cut X1="26" Y1="14" Name="X21"/>
+	<Cut X1="26" Y1="15" Name="X22"/>
+	<LineIC Value="Jumper Pins" X1="20" Y1="22" X2="20" Y2="24" Name="J1"/>
+	<Text Value="5V OUT" X1="18" Y1="24" Name="A4"/>
+	<Cut X1="22" Y1="24" Name="X23"/>
+	<LineIC Value="Sockets" X1="21" Y1="8" X2="21" Y2="9" Name="I2C"/>
+	<Jumper X1="1" Y1="11" X2="1" Y2="20" Name="J8"/>
+	<Text Value="0V" X1="35" Y1="12" Name="0V"/>
+	<LineIC Value="0.2A" X1="2" Y1="22" X2="2" Y2="13" Name="Fuse"/>
+	<LineIC Value="Terminal Block" X1="3" Y1="6" X2="3" Y2="4" Name="Call  Heat"/>
+	<LineIC Value="Sockets" X1="5" Y1="4" X2="5" Y2="6" Name="IO3"/>
+	<Text Value="Boiler" X1="1" Y1="4" Name="CallForHeat"/>
+	<Text Value="Relay" X1="1" Y1="6" Name="RelayCommon"/>
+	<Text Value="Neutral" X1="2" Y1="11" Name="Neutral"/>
+	<Text Value="Live" X1="1" Y1="9" Name="Live"/>
+	<Jumper X1="1" Y1="9" X2="1" Y2="6" Name="J9"/>
+	<Jumper X1="4" Y1="9" X2="4" Y2="13" Name="J10"/>  <Cut X1="7" Y1="4" Name="X24"/>
+  <Cut X1="7" Y1="6" Name="X25"/>
+  <Cut X1="7" Y1="5" Name="X26"/>
+  <Cut X1="7" Y1="9" Name="X27"/>
+  <Cut X1="7" Y1="10" Name="X28"/>
+  <Cut X1="7" Y1="11" Name="X29"/>
+  <Cut X1="7" Y1="13" Name="X30"/>
+</Layout>
