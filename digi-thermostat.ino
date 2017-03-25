@@ -140,7 +140,7 @@ void setup() {
 //  Serial.println(F("Connecting to the network..."));
   SPI.begin();
   radio.begin();
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_MAX);
   radio.enableDynamicPayloads();
   radio.setDataRate(RF24_1MBPS);
   radio.setChannel(RADIO_CHANNEL);
