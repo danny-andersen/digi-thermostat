@@ -56,7 +56,7 @@ int main(int argc, char** argv){
   radio.begin();
 
 //  radio.setRetries(400UL,1);
-  radio.setPALevel(RF24_PA_HIGH);
+  radio.setPALevel(RF24_PA_MAX);
   radio.enableDynamicPayloads();
   radio.setDataRate(RF24_1MBPS);
   radio.setChannel(RADIO_CHANNEL);
