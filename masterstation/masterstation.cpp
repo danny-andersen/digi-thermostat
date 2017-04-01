@@ -17,6 +17,7 @@
 #include <RF24Network.h>
 
 #include "digi-thermostat.h"
+#define THERM_FILE "/sys/bus/w1/devices/28-051673fdeeff/w1_slave"
 
 using namespace std;
 
@@ -49,6 +50,7 @@ bool sendExtTemp();
 bool sendSetTemp();
 bool sendHoliday();
 bool sendTime(time_t secs);
+bool sendThermTemp(bool status);
 
 int main(int argc, char** argv){
 
@@ -72,6 +74,7 @@ int main(int argc, char** argv){
   int extSentTime = 0;
   int tempSentTime = 0;
   time_t sentTime = 0;
+  time_t sentThermTemp = 0;
   time_t statusTime = 0;
   time_t holidaySentTime = 0;
   bool networkUp = false;
@@ -129,7 +132,14 @@ int main(int argc, char** argv){
 	    }
 	} else {
 	    time_t secs = time(NULL);
-	    if (networkUp && abs(secs - sentTime) > (int)SEND_TIME_INTERVAL) {
+	    if (networkUp && abs(secs - sentThermTemp) > (int)SEND_TEMP_INTERVAL) {
+	        if (sendThermTemp(networkUp)) {
+		    networkUp = true;
+		    sentThermTemp = time(NULL);
+		} else {
+	    	    networkUp = false;
+	        }
+	    } else if (networkUp && abs(secs - sentTime) > (int)SEND_TIME_INTERVAL) {
 	        if (sendTime(secs)) {
 		    networkUp = true;
 		    sentTime = time(NULL);
@@ -188,6 +198,40 @@ bool sendMotd() {
 		status = true;
 	    }	 
 	}
+    }
+    return status;
+}
+
+bool sendThermTemp(bool status) {
+    FILE *fext;
+    fext = fopen(THERM_FILE, "r");
+    RF24NetworkHeader header(DIGI_THERM_NODE_ID);
+    header.type = SET_THERM_TEMP_MSG;
+    Content payload;
+    //Read thermometer sensor file
+    char line[256];
+    int temp = 1000;
+    //First line - check that ends with YES to indicate a good temp
+    if (fgets(line, sizeof(line), fext) != NULL) {
+	if (line[strlen(line)-4] == 'Y') {
+	    //Read the temperature
+     	    if (fgets(line, sizeof(line), fext)) {
+		char *tok;
+		tok = strtok(line,"=");
+		tok = strtok(NULL, "=");
+                temp = strtol(tok, NULL, 10);
+	    }
+	}
+    }
+        payload.setTherm.thermTemp = temp / 100;
+        printf("Sending temp: %d\n", payload.setTherm.thermTemp);
+    if (temp != 1000) {
+        if (!network.write(header, &payload, sizeof(Content))) {
+	    printf("Failed to write set thermometer temp message\n");
+	    status = false;
+        } else {
+	    status = true;
+        }
     }
     return status;
 }
@@ -284,7 +328,6 @@ bool sendHoliday() {
     Content msg;
     int lineCnt = 0;
     while ((read = getline(&line, &len, fhols)) != -1) {
-        printf("%s", line);
         char part[32];
 	//Get first comma
         int pos = strcspn(line, ",");
@@ -310,7 +353,6 @@ bool sendHoliday() {
 	    //temp line
 	    float temp;
 	    sscanf(&line[pos], "%f",&temp);
-	    printf("temp: %f\n",temp);
 	    msg.holiday.elem.holidayTemp = temp * 10;
 	}
 	lineCnt++;
@@ -401,7 +443,7 @@ bool sendSched() {
 		    status = true;
   		}
 		//Give it time to write it to EEPROM
-		delay(400);
+		delay(600);
 	    }
 	} //end while
 	free(line);
