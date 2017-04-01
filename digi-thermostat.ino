@@ -33,6 +33,7 @@ LiquidCrystal_I2C lcd(0x27,20,4);
 
 //Global variables and stuff to initate once
 int16_t currentTemp = 1000;
+int16_t currentSentThermTemp = 1000;
 int16_t lastScheduledTemp = 0;
 volatile int16_t currentSetTemp = 0;
 byte noOfSchedules = 0;
@@ -57,6 +58,7 @@ unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
 unsigned long motdExpiryTimer = 0;
+unsigned long lastThermTempTime = 0; //Time at which rx last thermometer temp
 
 char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 char* monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -230,6 +232,11 @@ void loop() {
     currentTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
     lastTempRead = currentMillis;
     changedState = 1;
+    //Override the internal thermometer temp if the external (to the thermostat) has been rx within a set time
+    if (currentMillis - lastThermTempTime < RX_TEMP_INTERVAL) {
+      //Use the sent temperature, not the one read internally
+      currentTemp = currentSentThermTemp;
+    }
   }
 //  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 
@@ -404,6 +411,11 @@ uint8_t checkMasterMessages(uint8_t changedState) {
         break;
       case (SET_TEMP_MSG):
           currentSetTemp = payload.setTemp.setTemp;
+          changedState = 2;
+        break;
+      case (SET_THERM_TEMP_MSG):
+          currentSentThermTemp = payload.setTherm.thermTemp;
+          lastThermTempTime = currentMillis;
           changedState = 2;
         break;
       case (SET_EXT_MSG):

@@ -21,10 +21,12 @@
 #define SCHED_CHECK_INTERVAL 1000UL
 //#define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
 #define SCROLL_PAUSE 1200UL //Pause at screen roll
+#define RX_TEMP_INTERVAL SEND_TEMP_INTERVAL * 4 * 1000 //msecs, Timeout of temp from masterstation 
 
 //Masterstation defines
 #define SEND_TIME_INTERVAL 300UL //secs, Send time from masterstation every 300 secs
 #define STATUS_INTERVAL 15UL //secs, how often masterstation polls for status
+#define SEND_TEMP_INTERVAL 15UL //secs, Send temperature from masterstation every 15 secs
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings
@@ -59,6 +61,7 @@
 #define DELETE_SCHEDULE_MSG  10
 #define SET_DATE_TIME_MSG  11
 #define SET_HOLIDAY_MSG  12
+#define SET_THERM_TEMP_MSG  13
 
 #define RESPONSE_TIMEOUT_MS 1000
 
@@ -126,6 +129,9 @@ union Content {
     struct SetTemp {
       int16_t setTemp;
     } setTemp;
+    struct SetThermTemp {
+      int16_t thermTemp;
+    } setTherm;
     struct SetExt {
       int16_t setExt;
       char windStr[MAX_WIND_SIZE];
