@@ -22,6 +22,7 @@
 //#define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
 #define SCROLL_PAUSE 1200UL //Pause at screen roll
 #define RX_TEMP_INTERVAL SEND_TEMP_INTERVAL * 4 * 1000 //msecs, Timeout of temp from masterstation 
+#define MAX_NO_MSG_RX_INTERVAL RX_TEMP_INTERVAL * 2  //msecs. If not rx msg in this time, reset radio
 
 //Masterstation defines
 #define SEND_TIME_INTERVAL 300UL //secs, Send time from masterstation every 300 secs

@@ -59,6 +59,8 @@ unsigned long loopDelta = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
 unsigned long motdExpiryTimer = 0;
 unsigned long lastThermTempTime = 0; //Time at which rx last thermometer temp
+unsigned long lastMessageTime = 0;
+boolean resetRadio = false;
 
 char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 char* monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -139,16 +141,8 @@ void setup() {
   lcd.backlight();
   
   // Connect to the network
-//  Serial.println(F("Connecting to the network..."));
-  SPI.begin();
-  radio.begin();
-  radio.setPALevel(RF24_PA_MAX);
-  radio.enableDynamicPayloads();
-  radio.setDataRate(RF24_1MBPS);
-  radio.setChannel(RADIO_CHANNEL);
-  delay(5);
-  network.begin(RADIO_CHANNEL, DIGI_THERM_NODE_ID);
-//  radio.printDetails();
+  initRadio();
+  lastMessageTime = millis();
 
   //Read schedule from EEPROM
   //Note: Max position: 32767
@@ -230,15 +224,15 @@ void loop() {
   if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
     temp_sensor.requestTemperatures(); // Send the command to get temperatures
     currentTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
+//  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
     lastTempRead = currentMillis;
     changedState = 1;
     //Override the internal thermometer temp if the external (to the thermostat) has been rx within a set time
-    if (currentMillis - lastThermTempTime < RX_TEMP_INTERVAL) {
+    if (currentMillis - lastThermTempTime < RX_TEMP_INTERVAL && currentSentThermTemp != 100) {
       //Use the sent temperature, not the one read internally
       currentTemp = currentSentThermTemp;
     }
   }
-//  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
 
   //Retreive current set point in schedule
   if (currentMillis - lastGetSched > SCHED_CHECK_INTERVAL) {
@@ -378,6 +372,19 @@ uint8_t readInputs(uint8_t changedState) {
   return changedState;
 }
 
+void initRadio() {
+  //  Serial.println(F("Connecting to the network..."));
+  SPI.begin();
+  radio.begin();
+  radio.setPALevel(RF24_PA_MAX);
+  radio.enableDynamicPayloads();
+  radio.setDataRate(RF24_1MBPS);
+  radio.setChannel(RADIO_CHANNEL);
+  delay(5);
+  network.begin(RADIO_CHANNEL, DIGI_THERM_NODE_ID);
+//  radio.printDetails();
+}
+
 void addDefaultSchedule() {
   //Add a default schedule - in mem only
   defaultSchedule.elem.day = 0;
@@ -392,6 +399,8 @@ void addDefaultSchedule() {
 uint8_t checkMasterMessages(uint8_t changedState) {
   network.update();
   while (network.available()) {
+    lastMessageTime = currentMillis;
+    resetRadio = false;
     RF24NetworkHeader header;
     RF24NetworkHeader respHeader(MASTER_NODE_ID);
     Content payload;
@@ -539,6 +548,14 @@ uint8_t checkMasterMessages(uint8_t changedState) {
       }
       flickerLED();
     }
+  }
+  if (currentMillis - lastMessageTime > MAX_NO_MSG_RX_INTERVAL && !resetRadio) { 
+    radio.powerDown();
+    delay(10);
+    radio.powerUp();
+    delay(10);
+    initRadio();
+    resetRadio = true; //only reset radio once
   }
   return changedState;
 }
