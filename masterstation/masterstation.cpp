@@ -223,9 +223,10 @@ bool sendThermTemp(bool status) {
 	    }
 	}
     }
+    if (temp < 500) {
+	//Only send if temp was read correctly and looks sensible
         payload.setTherm.thermTemp = temp / 100;
         printf("Sending temp: %d\n", payload.setTherm.thermTemp);
-    if (temp != 1000) {
         if (!network.write(header, &payload, sizeof(Content))) {
 	    printf("Failed to write set thermometer temp message\n");
 	    status = false;
