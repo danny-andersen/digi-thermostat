@@ -7,11 +7,44 @@ function upload_temp {
 
 function upload_image {
   sudo fswebcam -r 1280x720 home.jpg
-  ./dropbox_uploader.sh delete home.jpg
   ./dropbox_uploader.sh upload home.jpg home.jpg
 }
 
+#Start
 cd "$(dirname "$0")"
+
+#Check wifi up
+ping -c2 192.168.1.254 > /dev/null
+if [ $? == 0 ]
+then
+  touch wifi-up.txt
+fi
+
+#Check last time could contact wifi AP 
+#If greater than 15 mins ago, restart wlan0
+cnt=$(find ./ -name wifi-up.txt -mmin +15 | wc -l)
+if [ ${cnt} != 0 ]
+then
+      sudo /sbin/ifdown --force wlan0
+      sleep 10
+      sudo /sbin/ifup --force wlan0
+      sleep 10
+      #Check if interface now back up
+      ifquery --state wlan0
+      if [ $? == 1 ]
+      then
+	  #Failed to restart interface so reboot
+          sudo /sbin/shutdown -r now
+      fi
+fi
+#Catch all - If greater than 60 mins ago, reboot
+#Note that this will cause a reboot every hour if AP is down
+cnt=$(find ./ -name wifi-up.txt -mmin +60 | wc -l)
+if [ ${cnt} != 0 ]
+then
+      sudo /sbin/shutdown -r now
+fi
+
 rm host_list.html
 wget -O host_list.html 192.168.1.254 
 
@@ -20,6 +53,7 @@ cp lan_devices.txt lan_devices.old
 
 filename=$(date +%Y%m%d)"_device_change.txt"
 sensor_file=/sys/bus/w1/devices/28-051673fdeeff/w1_slave
+masterstation=../sketchbook/digi-thermostat/masterstation
 safeDevice="DansG3|SansMobile"
 sudo chmod 666 /dev/video0
 
@@ -30,8 +64,15 @@ then
 	diff lan_devices.txt lan_devices.old | sed -f seddiff >> tmpdiff
 	cat tmpdiff >> $filename
 	./dropbox_uploader.sh upload $filename $filename
-	./dropbox_uploader.sh delete lan_devices.txt
 	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt
+fi
+
+diff -q ${masterstation}/status.txt thermostat_status.txt
+if [ $? -eq 1 ]
+then
+	echo "Uploading changed thermostat status"
+	cp ${masterstation}/status.txt thermostat_status.txt
+	./dropbox_uploader.sh upload thermostat_status.txt thermostat_status.txt
 fi
 
 ./dropbox_uploader.sh download command.txt command.txt
@@ -55,6 +96,20 @@ then
     ./dropbox_uploader.sh delete command.txt
     rm command.txt
 fi
+
+./dropbox_uploader.sh download setTemp.txt setTemp.txt
+if [ -f setTemp.txt ]
+then
+    mv setTemp.txt $masterstation
+    ./dropbox_uploader.sh delete setTemp.txt
+fi
+
+./dropbox_uploader.sh download holiday.txt holiday.txt
+if [ -f holiday.txt ]
+then
+    mv holiday.txt $masterstation
+    ./dropbox_uploader.sh delete holiday.txt
+fi
 	 
 #Check if motion is running
 sudo service motion status
@@ -77,8 +132,8 @@ else
     fi
 fi
 
-#Upload any motion video detected and delete file
-files=$(find motion_images/ -name "*.avi" -mmin 1)
+#Upload any motion video not uploaded and delete file
+files=$(find motion_images/ -name "*.avi" -mmin +0 -size +200k)
 num=$(echo $files | wc -w)
 if [ $num -gt 0 ]
 then
@@ -89,13 +144,24 @@ then
 	done
 fi
 	    
+#Delete all old jpeg files
+find motion_images/ -name "*.jpg" -mmin +5 -exec rm '{}' ';'
+find motion_images/ -name "*.avi" -mmin +5 -size -200k -exec rm '{}' ';'
 
-#Refresh picture every 10mins
+#Refresh picture every hour
 mins=$(date +%M)
-istime=$((mins % 60))
-if [ $istime -eq 0 ]
+if [ $mins -eq 0 ]
 then
    upload_image
+fi
+
+#Update weather every 30mins
+istime=$((mins % 30))
+if [ $istime -eq 0 ]
+then
+   cd ${masterstation}
+   ./getBBCWeather.sh
+   cd -
 fi
 
 #Check up on temperature
