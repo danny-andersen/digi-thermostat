@@ -72,10 +72,21 @@ if __name__ == "__main__":
 	end += 1
     if end >= len(hours): 
 	end -= 1 
+    #Look for rain
+    rainTime = 0
+    for s in weather:
+	if s == "Thunderstorm" or s.lower().find("rain") != -1:
+	    rainAt = s
+	    break
+        rainTime += 1
+    if rainTime >= len(hours): 
+	rainTime = -1 
 
     #Put it all together
     forecast = startWeather + " until " + hours[end] + "00"
-    if endWeather != "":
+    if rainTime != -1 and rainTime != end:
+	forecast += ". Rain at " + hours[rainTime] + "00"
+    elif endWeather != "":
 	forecast += " and then " + endWeather
     now = datetime.now().time() 
     if now.hour <= sunriseHr + 1:

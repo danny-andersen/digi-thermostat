@@ -13,6 +13,7 @@
 #include <string>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 #include <RF24/RF24.h>
 #include <RF24Network.h>
 
@@ -210,7 +211,7 @@ bool sendThermTemp(bool status) {
     Content payload;
     //Read thermometer sensor file
     char line[256];
-    int temp = 1000;
+    int temp = 100000;
     //First line - check that ends with YES to indicate a good temp
     if (fgets(line, sizeof(line), fext) != NULL) {
 	if (line[strlen(line)-4] == 'Y') {
@@ -223,9 +224,10 @@ bool sendThermTemp(bool status) {
 	    }
 	}
     }
-    if (temp < 500) {
+    if (temp < 50000) {
 	//Only send if temp was read correctly and looks sensible
-        payload.setTherm.thermTemp = temp / 100;
+	float tempf = roundf(temp / 100.0);
+        payload.setTherm.thermTemp = tempf / 1;
         printf("Sending temp: %d\n", payload.setTherm.thermTemp);
         if (!network.write(header, &payload, sizeof(Content))) {
 	    printf("Failed to write set thermometer temp message\n");
