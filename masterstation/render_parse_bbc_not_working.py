@@ -1,12 +1,49 @@
+import sys  
+from PyQt4.QtGui import *  
+from PyQt4.QtCore import *  
+from PyQt4.QtWebKit import *  
+from lxml import html 
+
+class Render(QWebPage):  
+  def __init__(self, url):  
+    self.app = QApplication(sys.argv)  
+    QWebPage.__init__(self)  
+    self.loadFinished.connect(self._loadFinished)  
+    self.mainFrame().load(QUrl(url))  
+    self.app.exec_()  
+  
+  def _loadFinished(self, result):  
+    self.frame = self.mainFrame()  
+    self.app.quit() 
+
 if __name__ == "__main__":
+    from pyvirtualdisplay import Display
+    #from selenium import webdriver
     from bs4 import BeautifulSoup
     from datetime import datetime,time
     import sys
 
-    if len(sys.argv) != 2:
-	 sys.stderr.write("Please provide a file to parse\n")
-	 sys.exit(1)
-    html = BeautifulSoup(open(sys.argv[1]).read(), "lxml")
+    display = Display(visible=0, size=(1024, 768))
+    display.start()
+
+    url = "http://www.bbc.co.uk/weather/2642573"
+
+    #browser = webdriver.Chrome('/usr/lib/chromium-browser/chromedriver')
+    #browser.get(url)
+    #resultHtml = browser.execute_script("return document.body.innerHTML")
+
+    r = Render(url)  
+    result = r.frame.toHtml()
+    resultHtml = str(result.toAscii())
+    #print resultHtml
+    with open("bbc.html", "w") as f:
+	f.truncate()
+	f.write(resultHtml + "\n")
+    print "Saved html"
+    display.stop()
+
+    print "Parsing Html"
+    html = BeautifulSoup(resultHtml, "lxml")
     #Find start of hourly forecast
     hourly = html.find("table", class_="moving-window");
     hours = []
