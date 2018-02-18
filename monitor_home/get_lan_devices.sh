@@ -104,6 +104,13 @@ then
     ./dropbox_uploader.sh delete setTemp.txt
 fi
 
+./dropbox_uploader.sh download setSchedule.txt setSchedule.txt
+if [ -f setSchedule.txt ]
+then
+    mv setSchedule.txt $masterstation/schedule.txt
+    ./dropbox_uploader.sh delete setSchedule.txt
+fi
+
 ./dropbox_uploader.sh download holiday.txt holiday.txt
 if [ -f holiday.txt ]
 then
