@@ -65,7 +65,7 @@ if __name__ == "__main__":
 			precipTime = rep
 		    if stopRaining == None and int(rep.get('Pp')) <= 50: # Rain stopping
 			stopRaining = rep
-                    if rep.get('W') != nowWeather:
+                    if weatherText[int(rep.get('W'))] != weatherText[nowWeather]:
 		        nextForecast = rep
 		        nextWeather = int(rep.get('W'))
         if day.get('value') == tomorrow:
@@ -77,7 +77,7 @@ if __name__ == "__main__":
 		    stopRaining = rep
                 if nextTemp == -255:
                     nextTemp = int(rep.get('T'))
-                if nextWeather == -1 and int(rep.get('W')) != nowWeather:
+                if nextWeather == -1 and weatherText[int(rep.get('W'))] != weatherText[nowWeather]:
 	             nextForecast = rep
 		     nextWeather = int(rep.get('W'))
         #print nextWeather, day.get('value'), today, tomorrow
@@ -95,12 +95,18 @@ if __name__ == "__main__":
     #print precipTime.text, precipTime.get('Pp')
     #print stopRaining.text, stopRaining.get('Pp')
     nextTime = int(nextForecast.text) / 60
-    forecastText = "%s (%s%%) RH:%s%% until %0d00" % (weatherText[nowWeather],forecast.get('Pp'),forecast.get('H'),nextTime) 
-    if forecast.get('Pp') <= 50: #Currently not raining (probably)
-        rainTime = int(preciptTime.text) / 60
+    rainProb = int(forecast.get('Pp'))
+    rainStr = ''
+    if rainProb > 40: rainStr = " (Rain %s%%)" % rainProb 
+    forecastText = "%s%s until %0d00" % (weatherText[nowWeather],rainStr,nextTime) 
+    if rainProb <= 50 and precipTime != None: #Currently not raining (probably)
+        rainTime = int(precipTime.text) / 60
 	forecastText += ". %s (%s%%) at %0d00" % (weatherText[precipTime.get('W')], precipTime.get('Pp'),rainTime)
     else:
-	forecastText += " and then %s (%s%%)" % (weatherText[nextWeather], nextForecast.get('Pp'))
+        rainProb = int(nextForecast.get('Pp'))
+        rainStr = ''
+        if rainProb > 40: rainStr = " (Rain %s%%)" % rainProb 
+	forecastText += " and then %s%s" % (weatherText[nextWeather],rainStr)
     if now.hour > nextTime:
         expiry = (24 - now.hour + nextTime) * 3600 * 1000
     else:
