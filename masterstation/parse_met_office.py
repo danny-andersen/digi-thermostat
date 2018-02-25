@@ -107,10 +107,24 @@ if __name__ == "__main__":
         rainStr = ''
         if rainProb > 40: rainStr = " (Rain %s%%)" % rainProb 
 	forecastText += " and then %s%s" % (weatherText[nextWeather],rainStr)
+	#Read in sunrise + sunset times
+    with open("suntimes.txt", "r") as f:
+        sunrise = f.readline().strip("\n").strip()
+        sunset = f.readline().strip("\n").strip()
+    if sunrise != '' and sunset != '':
+        sunriseHr = int(sunrise.split(":")[0])
+        sunsetHr = int(sunset.split(":")[0])
+        riseDelta = abs(now.hour - sunriseHr)
+        setDelta = abs(now.hour - sunsetHr)
+        if riseDelta <= 2:
+            forecastText = "Sunrise at %s, %s" % (sunrise, forecastText)
+        elif setDelta <= 2:
+            forecastText = "Sunset at %s, %s" % (sunset, forecastText)
+
     if now.hour > nextTime:
         expiry = (24 - now.hour + nextTime) * 3600 * 1000
     else:
-        expiry = nextTime - now.hour * 3600 * 1000
+        expiry = (nextTime - now.hour) * 3600 * 1000
 
     #print forecastText, expiry
     #print wind, temp

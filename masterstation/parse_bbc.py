@@ -94,7 +94,7 @@ if __name__ == "__main__":
 	forecast = sunriseStr + ", " + forecast
     elif now.hour > 14 and now.hour <= sunsetHr + 1:
 	forecast = sunsetStr + ", " + forecast
-    print forecast
+    #print forecast
     expiry = abs(now.hour - int(hours[end])) * 3600 * 1000;
 
     #Save output into files for sending to thermostat
