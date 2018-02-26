@@ -19,6 +19,7 @@ if __name__ == "__main__":
                 (27,"Heavy snow"), (28,"Thunder shower"), (29,"Thunder shower"),\
                 (30,"Thunder")])
 
+    rainIfOver = 9
     tree = ET.parse(sys.argv[1])
     root = tree.getroot()
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     nextTime = int(nextForecast.text) / 60
     rainProb = int(forecast.get('Pp'))
     rainStr = ''
-    if rainProb > 40: rainStr = " (Rain %s%%)" % rainProb 
+    if rainProb > 40 or nowWeather >= rainIfOver: rainStr = " (%s%%)" % rainProb 
     forecastText = "%s%s until %0d00" % (weatherText[nowWeather],rainStr,nextTime) 
     if rainProb <= 50 and precipTime != None: #Currently not raining (probably)
         rainTime = int(precipTime.text) / 60
@@ -105,7 +106,7 @@ if __name__ == "__main__":
     else:
         rainProb = int(nextForecast.get('Pp'))
         rainStr = ''
-        if rainProb > 40: rainStr = " (Rain %s%%)" % rainProb 
+        if rainProb > 40 or nextWeather >= rainIfOver: rainStr = " (%s%%)" % rainProb 
 	forecastText += " and then %s%s" % (weatherText[nextWeather],rainStr)
 	#Read in sunrise + sunset times
     with open("suntimes.txt", "r") as f:
