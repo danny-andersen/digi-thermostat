@@ -101,7 +101,7 @@ if __name__ == "__main__":
     forecastText = "%s%s until %0d00" % (weatherText[nowWeather],rainStr,nextTime) 
     if rainProb <= 50 and precipTime != None: #Currently not raining (probably)
         rainTime = int(precipTime.text) / 60
-	forecastText += ". %s (%s%%) at %0d00" % (weatherText[precipTime.get('W')], precipTime.get('Pp'),rainTime)
+	forecastText += ". %s (%s%%) at %0d00" % (weatherText[int(precipTime.get('W'))], precipTime.get('Pp'),rainTime)
     else:
         rainProb = int(nextForecast.get('Pp'))
         rainStr = ''
