@@ -54,7 +54,7 @@ cp lan_devices.txt lan_devices.old
 filename=$(date +%Y%m%d)"_device_change.txt"
 sensor_file=/sys/bus/w1/devices/28-051673fdeeff/w1_slave
 masterstation=../sketchbook/digi-thermostat/masterstation
-safeDevice="DansG3|SansMobile"
+#safeDevice="DansG3|SansMobile"
 safeDevice="Dans-Pixel|Sams-iPhone|Sans-A5-Phone|SansMobile"
 sudo chmod 666 /dev/video0
 
