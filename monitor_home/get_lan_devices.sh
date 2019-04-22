@@ -1,5 +1,9 @@
 #!/bin/bash
 function upload_temp {
+    ./dropbox_uploader.sh upload $filename $filename
+}
+
+function boiler_state {
     time=$(date +%H%M)
     echo "Temperature:" $time: $temp >> $filename
     ./dropbox_uploader.sh upload $filename $filename
@@ -56,6 +60,7 @@ sensor_file=/sys/bus/w1/devices/28-051673fdeeff/w1_slave
 masterstation=../sketchbook/digi-thermostat/masterstation
 #safeDevice="DansG3|SansMobile"
 safeDevice="Dans-Pixel|Sams-iPhone|Sans-A5-Phone|SansMobile"
+uploadStatus=N
 sudo chmod 666 /dev/video0
 
 diff -q lan_devices.txt lan_devices.old
@@ -64,8 +69,8 @@ then
 	date +%H%M > tmpdiff
 	diff lan_devices.txt lan_devices.old | sed -f seddiff >> tmpdiff
 	cat tmpdiff >> $filename
-	./dropbox_uploader.sh upload $filename $filename
 	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt
+	uploadStatus=Y
 fi
 
 diff -q ${masterstation}/status.txt thermostat_status.txt
@@ -176,14 +181,43 @@ fi
 if [ -f $sensor_file ]
 then
     temp=$(grep "t=" $sensor_file | awk '{print $10}' | awk -F= '{print $2}')
-    temp=$((temp + 500))
-    temp=$((temp / 1000))
+    #temp=$((temp + 500))
+    #temp=$((temp / 1000))
     #temp=$(echo $temp '/ 1000' | bc -l)
+    temp=$(echo $temp | awk '{printf("%.1f\n", $1/1000.0)}'i)
     oldtemp=$(cat temperature.txt)
-    if [ $oldtemp -ne $temp ]
+    if [ $oldtemp != $temp ]
     then
         echo $temp > temperature.txt
-	upload_temp
+    	time=$(date +%H%M)
+    	echo ${time}":Temp:"${temp} >> $filename
+
+	uploadStatus=Y
     fi
+fi
+
+#Record when boiler is on/off
+if [ -f ${masterstation}/status.txt ]
+then
+    state=$(grep "Heat on" ${masterstation}/status.txt | awk '{print $3}' )
+    oldstate=$(cat boilerState.txt)
+    if [ $oldstate != $state ] 
+    then
+        echo $state > boilerState.txt
+    	time=$(date +%H%M)
+	if [ $state = 'Yes' ]
+	then
+		state='On'
+	else
+		state='Off'
+	fi
+    	echo ${time}":Boiler:"${state} >> $filename
+	uploadStatus=Y
+    fi
+fi
+
+if [ ${uploadStatus} = "Y" ]
+then
+    ./dropbox_uploader.sh upload $filename $filename
 fi
 
