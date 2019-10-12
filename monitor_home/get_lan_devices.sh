@@ -1,14 +1,4 @@
 #!/bin/bash
-function upload_temp {
-    ./dropbox_uploader.sh upload $filename $filename
-}
-
-function boiler_state {
-    time=$(date +%H%M)
-    echo "Temperature:" $time: $temp >> $filename
-    ./dropbox_uploader.sh upload $filename $filename
-}
-
 function upload_image {
   sudo fswebcam -r 1280x720 home.jpg
   ./dropbox_uploader.sh upload home.jpg home.jpg
@@ -18,7 +8,7 @@ function upload_image {
 cd "$(dirname "$0")"
 
 #Check wifi up
-ping -c2 192.168.1.254 > /dev/null
+ping -c2 192.168.1.1 > /dev/null
 if [ $? == 0 ]
 then
   touch wifi-up.txt
@@ -49,19 +39,28 @@ then
       sudo /sbin/shutdown -r now
 fi
 
-rm host_list.html
-wget -O host_list.html 192.168.1.254 
-
-cp lan_devices.txt lan_devices.old
-./parse_html.sh host_list.html | grep -v "^Active" | grep -v "^No" | grep -v "^Disabled" > lan_devices.txt
-
 filename=$(date +%Y%m%d)"_device_change.txt"
 sensor_file=/sys/bus/w1/devices/28-051673fdeeff/w1_slave
 masterstation=../sketchbook/digi-thermostat/masterstation
 #safeDevice="DansG3|SansMobile"
-safeDevice="Dans-Pixel|Sams-iPhone|Sans-A5-Phone|SansMobile"
+safeDevice="Dans-Pixel|Sans-A5-Phone|Sans-work-phone"
 uploadStatus=N
 sudo chmod 666 /dev/video0
+
+mv lan_devices.txt lan_devices.old
+#rm host_list.html
+#wget -O host_list.html 192.168.1.1 
+#./parse_html.sh host_list.html | grep -v "^Active" | grep -v "^No" | grep -v "^Disabled" > lan_devices.txt
+
+dev=$(echo $safeDevice | sed 's/|/ /g')
+for d in $dev
+do
+	ping -c2 $d > /dev/null
+	if [ $? == 0 ]
+	then
+		echo $d >> lan_devices.txt
+	fi
+done	
 
 diff -q lan_devices.txt lan_devices.old
 if [ $? -eq 1 ]
@@ -132,7 +131,7 @@ then
     grep -qE $safeDevice lan_devices.txt  
     if [ $? -eq 0 ]
     then
-	echo "Dans home - turn motion detection off"
+	echo "Someones home - turn motion detection off"
 	sudo service motion stop
     fi
 else
@@ -140,7 +139,7 @@ else
     grep -qE $safeDevice lan_devices.txt  
     if [ $? -ne 0 ]
     then
-	echo "Dans not home - turn motion detection on"
+	echo "No ones home - turn motion detection on"
 	sudo service motion start
     fi
 fi
