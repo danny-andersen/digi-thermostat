@@ -40,10 +40,9 @@ then
 fi
 
 filename=$(date +%Y%m%d)"_device_change.txt"
-sensor_file=/sys/bus/w1/devices/28-051673fdeeff/w1_slave
-masterstation=../sketchbook/digi-thermostat/masterstation
-#safeDevice="DansG3|SansMobile"
-safeDevice="Dans-Pixel|Sans-A5-Phone|Sans-work-phone"
+sensor_dir=/sys/bus/w1/devices/28-051673fdeeff
+masterstation=../masterstation
+safeDevice="Dans-Pixel|Sans-A5-Phone"
 uploadStatus=N
 sudo chmod 666 /dev/video0
 
@@ -87,9 +86,10 @@ then
     echo "Running command:" $contents
     if [ $contents = "temp" ];
     then
-	if [ -f $sensor_file ]
+	if [ -f ${sensor_dir}/temperature ]
 	then
-    	    temp=$(grep "t=" $sensor_file | awk '{print $10}' | awk -F= '{print $2}')
+    	    #temp=$(grep "t=" $sensor_dir/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
+	    temp=$(cat ${sensor_dir}/temperature)
 	    temp=$(echo "scale=2; $temp / 1000" | bc -l)
 	    upload_temp
 	fi
@@ -177,9 +177,10 @@ then
 fi
 
 #Check up on temperature
-if [ -f $sensor_file ]
+if [ -f ${sensor_dir}/temperature ]
 then
-    temp=$(grep "t=" $sensor_file | awk '{print $10}' | awk -F= '{print $2}')
+    #temp=$(grep "t=" ${sensor_dir}/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
+    temp=$(cat ${sensor_dir}/temperature)
     #temp=$((temp + 500))
     #temp=$((temp / 1000))
     #temp=$(echo $temp '/ 1000' | bc -l)
