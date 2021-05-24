@@ -181,18 +181,17 @@ if [ -f ${sensor_dir}/temperature ]
 then
     #temp=$(grep "t=" ${sensor_dir}/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
     temp=$(cat ${sensor_dir}/temperature)
-    #temp=$((temp + 500))
-    #temp=$((temp / 1000))
-    #temp=$(echo $temp '/ 1000' | bc -l)
-    temp=$(echo $temp | awk '{printf("%.1f\n", $1/1000.0)}'i)
-    oldtemp=$(cat temperature.txt)
-    if [ $oldtemp != $temp ]
+    if [ ${#temp} -gt 3 ]
     then
-        echo $temp > temperature.txt
-    	time=$(date +%H%M)
-    	echo ${time}":Temp:"${temp} >> $filename
-
-	uploadStatus=Y
+        temp=$(echo $temp | awk '{printf("%.1f\n", $1/1000.0)}')
+        oldtemp=$(cat temperature.txt)
+        if [ $oldtemp != $temp ]
+        then
+            echo $temp > temperature.txt
+    	    time=$(date +%H%M)
+     	    echo ${time}":Temp:"${temp} >> $filename
+	    uploadStatus=Y
+        fi
     fi
 fi
 
