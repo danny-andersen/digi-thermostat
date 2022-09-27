@@ -6,7 +6,7 @@
 */
 
 #include <SPI.h>
-#include "RF24.h"
+#include <RF24.h>
 #include <printf.h>
 
 /****************** User Config ***************************/

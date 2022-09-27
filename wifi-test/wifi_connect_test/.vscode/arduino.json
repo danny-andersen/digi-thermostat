@@ -1,0 +1,6 @@
+{
+    "board": "arduino:avr:nano",
+    "port": "/dev/ttyUSB1",
+    "sketch": "wifi_connect_test.ino",
+    "programmer": "arduino:avrispmkii"
+}

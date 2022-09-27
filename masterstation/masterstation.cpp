@@ -77,7 +77,7 @@ int main(int argc, char** argv){
   int tempSentTime = 0;
   time_t sentTime = 0;
   time_t sentThermTemp = 0;
-  time_t statusTime = 0;
+  time_t statusTime = time(NULL);
   time_t holidaySentTime = 0;
   bool networkUp = false;
   sleep(1);

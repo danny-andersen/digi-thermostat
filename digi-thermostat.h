@@ -8,8 +8,8 @@
 #define RELAY 6
 #define GREEN_LED 7
 #define RED_LED 8
-#define RADIO_CE 9
-#define RADIO_CS 10
+#define WIFI_RX 10
+#define WIFI_TX 11
 
 #define PIR_PIN A0 //Analogue 0
 
@@ -17,17 +17,16 @@
 #define OFF  0
 #define LOOP_DELAY 50
 #define RTC_READ_INTERVAL 500UL
-#define TEMPERATURE_READ_INTERVAL 15000UL
+#define TEMPERATURE_READ_INTERVAL 15000UL //15 secs
 #define SCHED_CHECK_INTERVAL 1000UL
+#define MESSAGE_CHECK_INTERVAL 10000UL //10 secs
 //#define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
 #define SCROLL_PAUSE 1200UL //Pause at screen roll
-#define RX_TEMP_INTERVAL SEND_TEMP_INTERVAL * 4 * 1000 //msecs, Timeout of temp from masterstation 
-#define MAX_NO_MSG_RX_INTERVAL RX_TEMP_INTERVAL * 2  //msecs. If not rx msg in this time, reset radio
+#define RX_TEMP_INTERVAL 600000UL //msecs, 10 min timeout of temp from masterstation 
 
-//Masterstation defines
-#define SEND_TIME_INTERVAL 300UL //secs, Send time from masterstation every 300 secs
-#define STATUS_INTERVAL 15UL //secs, how often masterstation polls for status
-#define SEND_TEMP_INTERVAL 15UL //secs, Send temperature from masterstation every 15 secs
+#define GET_TIME_INTERVAL 300000UL //Get time from masterstation every 5 mins
+
+#define TEMP_MOTD_TIME 10000 //Time to show status msg - 10 secs
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings
@@ -36,19 +35,69 @@
 #define DEBOUNCE_TIME 200 //switch must be down for 1000us 
 #define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
 #define SET_INTERVAL 1 //Amount to increase the temp by, per button press
-#define BOOST_TIME 30*60000 //Length of time to turn on heat regardless of set temperature
-#define BACKLIGHT_TIME 30*1000 //30s time to leave on once PIR triggered
+#define BOOST_TIME 600000UL //10min Length of time to turn on heat regardless of set temperature
+#define BACKLIGHT_TIME 30000UL //30s time to leave on once PIR triggered
 
 #define LCD_ROWS 4
 #define LCD_COLS 20
+#define TEMP_SIZE 6
 
 #define EEPROM_I2C_ADDR 0x50
 
-//Comms defines
+//Wifi
 
-#define RADIO_CHANNEL 90
-#define MASTER_NODE_ID 00 
-#define DIGI_THERM_NODE_ID 01
+//char NETWORK_STATUS[] = "WiFi %s";
+char LITERAL_STATUS[] = "%s";
+char SERVER_STATUS[] = "Server %s";
+char MESSAGE_FAIL[] = "Msg %s";
+//
+//#define MAX_GET_MSG_SIZE 55 //Max size of dynamic get msg with params
+//#define MAX_MESSAGE_SIZE 160
+//#define BUFF_SIZE MAX_MESSAGE_SIZE+6
+//
+////Status message format = /message?s=<station number>&trs=<resendmessages>&t=<temp>st=<thermostat set temp>&r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
+//char getMessage[MAX_GET_MSG_SIZE];
+//
+////Note: s=1 in messages as this is always for the thermostat station. If re-used, change the station number
+//char GET_MESSAGE_TEMPLATE[] = "message?s=1&rs=%d&t=%d&st=%d&r=%d&p=%d";
+//char HTTP[] = " HTTP/0.9";
+//char GET[] = "GET /";
+//char dateTimeStr[] = "%sdatetime%s";
+//char motdStrStr[] = "%smotd?s=1%s";
+//char extTempStr[] = "%sexttemp?s=1%s";
+////char thermTempStr[] = "%stemp%s";
+////char setTempStr[] = "%ssettemp?s=1%s";
+////char holidayStr[] = "%sholiday?s=1%s";
+
+#define ESP_AT_BAUD       9600
+
+#define MAX_RESPONSE_TIME 2000 // millis to wait for a response (byte to byte)
+#define MAX_STATUS_TIME 500 // millis to wait for a status response
+#define RECONNECT_WAIT_TIME 10000
+
+#define MAX_GET_MSG_SIZE 60 //Max size of dynamic get msg with params
+#define MAX_MOTD_SIZE 90
+#define MAX_MESSAGE_SIZE MAX_MOTD_SIZE
+#define BUFF_SIZE MAX_MESSAGE_SIZE+6
+
+uint8_t buff[BUFF_SIZE];
+char nextMessage[MAX_GET_MSG_SIZE];
+char getMessage[MAX_GET_MSG_SIZE];
+char EOL[] = "EOL";
+
+//Status message format = /message?s=<station number>&rs=<resend messages, e.g. on a reboot>t=<temp>st=<thermostat set temp>&r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
+char NEXT_MESSAGE_TEMPLATE[] = "message?s=%d&rs=%d&t=%d&st=%d&r=%d&p=%d";
+char GET_TEMPLATE[] = "*G%02d%s";
+char dateTime[] = "datetime";
+char thermTemp[] = "temp";
+char setTemp[] = "settemp";
+char extTempStr[] = "exttemp";
+char motdStr[] = "motd";
+char holidayStr[] = "holiday";
+
+unsigned long networkDownTime = 0;
+bool networkUp = false;
+bool rxInFail = false;
 
 #define REQ_STATUS_MSG  1
 #define STATUS_MSG  2
@@ -64,16 +113,56 @@
 #define SET_HOLIDAY_MSG  12
 #define SET_THERM_TEMP_MSG  13
 
-#define RESPONSE_TIMEOUT_MS 1000
-
-#define MOTD_FILE "motd.txt"
-#define SCHEDULE_FILE "schedule.txt"
-#define EXTTEMP_FILE "setExtTemp.txt"
-#define SET_TEMP_FILE "setTemp.txt"
-#define HOLIDAY_FILE "holiday.txt"
-
-#define MAX_MOTD_SIZE 64
 #define MAX_WIND_SIZE 12
+
+struct Message {
+  uint8_t id;
+  uint8_t len;
+  uint16_t crc;
+};
+
+struct DateTimeStruct {
+  uint8_t sec;
+  uint8_t min;
+  uint8_t hour;
+  uint8_t dayOfWeek;
+  uint8_t dayOfMonth;
+  uint8_t month;
+  uint16_t year;
+}; 
+
+struct Motd {
+    uint32_t expiry;
+    char motdStr[MAX_MOTD_SIZE];
+};
+
+struct Temp {
+  int16_t temp;
+};
+
+struct SetExt {
+  int16_t temp;
+  char windStr[MAX_WIND_SIZE];
+};
+
+struct HolidayDateStr {
+      uint8_t hour;
+      uint8_t dayOfMonth;
+      uint8_t month;
+      uint8_t year;
+};
+
+struct HolidayStr {
+        HolidayDateStr startDate;
+        HolidayDateStr endDate;
+        int16_t temp;
+        uint8_t valid; //Set to 1 if valid
+};
+
+union HolidayUnion {
+  HolidayStr elem;
+  uint8_t raw[sizeof(HolidayStr)];
+};
 
 //Struct is long word padded...
 struct SchedByElem {
@@ -88,66 +177,3 @@ union SchedUnion {
   struct SchedByElem elem;
   uint8_t raw[sizeof(SchedByElem)];
 };
-
-struct DateTimeStruct {
-  uint8_t sec;
-  uint8_t min;
-  uint8_t hour;
-  uint8_t dayOfWeek;
-  uint8_t dayOfMonth;
-  uint8_t month;
-  uint8_t year;
-}; 
-
-struct HolidayDateStr {
-  uint8_t hour;
-  uint8_t dayOfMonth;
-  uint8_t month;
-  uint8_t year;
-};
-
-struct HolidayByElem {
-    struct HolidayDateStr startDate;
-    struct HolidayDateStr endDate;
-    int16_t holidayTemp;
-    uint8_t valid; //Set to 1 if valid
-};
-
-union HolidayUnion {
-  HolidayByElem elem;
-  uint8_t raw[sizeof(HolidayByElem)];
-};
-
-union Content {
-    struct Status {
-      int16_t currentTemp;
-      int16_t setTemp;
-      uint8_t heatOn;
-      uint8_t minsToSet;
-      int16_t extTemp;
-      uint8_t noOfSchedules;
-    } status;
-    struct SetTemp {
-      int16_t setTemp;
-    } setTemp;
-    struct SetThermTemp {
-      int16_t thermTemp;
-    } setTherm;
-    struct SetExt {
-      int16_t setExt;
-      char windStr[MAX_WIND_SIZE];
-    } setExt;
-    struct AdjSetTimeConstants {
-      int16_t degPerHour; //in tenths of a degree - 50 = 5.0
-      int16_t extAdjustment; //in tenths
-    } adjSetTimeConstants;
-    struct MOTD {
-      char motdStr[MAX_MOTD_SIZE]; //Message of the day, having max of 64 chars
-      unsigned long expiry; //Number of millis after which message expires
-    } motd;
-    DateTimeStruct dateTime;
-    HolidayUnion holiday;
-    //Note no update schedule message as is an exact match and must be deleted and inserted to update
-    SchedByElem schedule; //supports delete, insert, retreive. 
-};
-

@@ -1,0 +1,6 @@
+{
+    "board": "arduino:avr:nano",
+    "port": "/dev/ttyUSB0",
+    "programmer": "arduino:avrispmkii",
+    "sketch": "http_get_test.ino"
+}
