@@ -40,3 +40,7 @@ status.txt
 met-forecast.xml
 suntimes.xml
 suntimes.txt
+
+#Private flies
+esp-wifi-board/wifi.h
+

@@ -26,7 +26,7 @@
 
 #define GET_TIME_INTERVAL 300000UL //Get time from masterstation every 5 mins
 
-#define TEMP_MOTD_TIME 10000 //Time to show status msg - 10 secs
+#define TEMP_MOTD_TIME 20000UL //Time to show status msg - 10 secs
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings

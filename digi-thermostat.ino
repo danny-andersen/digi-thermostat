@@ -63,7 +63,7 @@ unsigned long backLightTimer = BACKLIGHT_TIME;
 unsigned long motdExpiryTimer = 0;
 unsigned long lastThermTempTime = 0; //Time at which rx last thermometer temp
 unsigned long lastMessageCheck = 0;
-unsigned long lastRTCTime = 0;
+unsigned long lastRTCTime = 0UL;
 //unsigned long networkDownTime = 0;
 
 char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -97,19 +97,16 @@ void setup() {
   Serial.begin(9600);
   //  printf_begin();
   //  while (!Serial);
-  currentMillis = 0;
-  lastRTCRead = 0;
-  lastTempRead = 0;
-  lastGetSched = 0;
-  boilerOnTime = 0;
-  lastLoopTime = 0;
-  lastScrollTime = 0;
-  loopDelta = 0;
+  currentMillis = millis();
+  lastRTCRead = currentMillis;
+  lastTempRead = currentMillis;
+  lastGetSched = currentMillis;
+  lastScrollTime = currentMillis;
   backLightTimer = BACKLIGHT_TIME;
-  motdExpiryTimer = 0;
-  lastThermTempTime = 0; //Time at which rx last thermometer temp
-  lastMessageCheck = 0;
-  lastRTCTime = 0;
+  motdExpiryTimer = TEMP_MOTD_TIME + RECONNECT_WAIT_TIME; //Show the default message for temp period then request the latest motd
+  lastThermTempTime = currentMillis; //Time at which rx last thermometer temp
+  lastMessageCheck = currentMillis;
+  lastRTCTime = currentMillis;
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
   pinMode(RED_LED, OUTPUT);
@@ -305,34 +302,36 @@ void loop() {
 
   //Check if motd has expired
   if (motdExpiryTimer > 0) {
-    if (motdExpiryTimer > loopDelta) {
+    if (motdExpiryTimer >= loopDelta) {
       motdExpiryTimer -= loopDelta;
     } else {
-      //Forecast has expired, as has external temp and wind
-      //Request new ones
       motdExpiryTimer = 0;
-      bool result = false;
-      if (networkUp) {
-        if (getMotd()) {
-          result = true;
-        }
-        drainSerial();
-      }
-      if (!result) {
-        setDefaultMotd();
-      }
-      result = false;
-      if (networkUp) {
-        if (getExtTemp()) {
-          result = true;
-        }
-      }
-      if (!result) {
-        windStr[0] = '\0';
-        extTemp = 1000;
-      }
-      changedState = 2;
     }
+  }
+  if (motdExpiryTimer == 0) {
+    //Forecast has expired, as has external temp and wind
+    //Request new ones
+    bool result = false;
+    if (networkUp) {
+      if (getMotd()) {
+        result = true;
+      }
+      drainSerial();
+    }
+    if (!result) {
+      setDefaultMotd();
+    }
+    result = false;
+    if (networkUp) {
+      if (getExtTemp()) {
+        result = true;
+      }
+    }
+    if (!result) {
+      windStr[0] = '\0';
+      extTemp = 1000;
+    }
+    changedState = 2;
   }
 
   if (checkBackLight()) {
@@ -1217,20 +1216,20 @@ void getMinSec(unsigned long timeMs, char *charBuf) {
 }
 
 int getTimeStr(char *ptr) {
-  int dayofweek = 1;
-  int h = 12;
-  int m = 13;
-  int s = 31;
-  return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[dayofweek - 1], h, m, s );
-  //  return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
+  // int dayofweek = 1;
+  // int h = 12;
+  // int m = 13;
+  // int s = 31;
+  // return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[dayofweek - 1], h, m, s );
+   return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
 }
 
 void getDateStr(char *ptr) {
-  int d = 24;
-  int m = 6;
-  int y = 2022;
-  return sprintf(ptr, "%02d %s %02d ", d, monNames[m], y);
-  //  return sprintf(ptr, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
+  // int d = 24;
+  // int m = 6;
+  // int y = 2022;
+  // return sprintf(ptr, "%02d %s %02d ", d, monNames[m], y);
+   return sprintf(ptr, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
 }
 
 void switchHeat(boolean on) {
