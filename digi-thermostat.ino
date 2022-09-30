@@ -55,11 +55,12 @@ unsigned long currentMillis = 0;
 unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastGetSched = 0;
-unsigned long boilerOnTime = 0;
+unsigned long boilerRunTime = 0;
 unsigned long lastLoopTime = 0;
 unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
 unsigned long backLightTimer = BACKLIGHT_TIME;
+uint8_t pirStatus = 0;  //0 = off, 1 = on (triggered)
 unsigned long motdExpiryTimer = 0;
 unsigned long lastThermTempTime = 0; //Time at which rx last thermometer temp
 unsigned long lastMessageCheck = 0;
@@ -231,6 +232,7 @@ void loop() {
       //  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
       lastTempRead = currentMillis;
       changedState = 1;
+      boilerRunTime = getRunTime();
     }
   } else {
     //Use the sent temperature, not the one read internally
@@ -554,7 +556,7 @@ bool getNextMessage() {
   //Send current status as params in request
   //Status message format = /message?s=station&rs=resend init messages&t=<temp>st=<thermostat set temp>  &r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
   //GET /message?s=%d&rs=%d&t=%d&st=%d&r=%d&p=%d
-  snprintf(nextMessage, MAX_GET_MSG_SIZE, NEXT_MESSAGE_TEMPLATE, 1, resendMessages, (int)currentTemp, (int)currentSetTemp, 3, 1);
+  snprintf(nextMessage, MAX_GET_MSG_SIZE, NEXT_MESSAGE_TEMPLATE, STATION_NUMBER, resendMessages, (int)currentTemp, (int)currentSetTemp, (int)boilerRunTime, pirStatus);
   //Count the message len
   int msglen = 0;
   for (int i = 0; i < MAX_GET_MSG_SIZE; i++) {
@@ -717,6 +719,7 @@ void setThermTemp() {
   Temp *tp = (Temp *)&buff[4]; //Start of content
   currentSentThermTemp = tp->temp;
   lastThermTempTime = currentMillis;
+  boilerRunTime = getRunTime();
   changedState = 2;
 }
 
@@ -886,11 +889,10 @@ void displayState() {
     }
   } else {
     //Show boiler runtime or date
-    unsigned long runTime = getRunTime();
-    if (runTime != 0) {
+    if (boilerRunTime != 0) {
       //Boiler is on - display how long for on row 2
       char run[] = "Run:MM:SS";
-      getMinSec(runTime, &run[4]);
+      getMinSec(boilerRunTime, &run[4]);
       strncat(runTimeStr, &run[0], strlen(run));
       strncat(&runTimeStr[8], sp, 1);
       //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
@@ -1023,6 +1025,8 @@ boolean checkBackLight() {
       backLightTimer -= loopDelta;
     } else {
       backLightTimer = 0;
+      //Force a message check, which flags the PIR status change to the masterstation
+      lastMessageCheck = 0;
     }
   }
   //PIR set to repeat trigger so if output is high then set backLightTimer to BACKLIGHT_TIME
@@ -1030,10 +1034,13 @@ boolean checkBackLight() {
   int pirValue = analogRead(PIR_PIN);
   if (pirValue >= ANALOGUE_HIGH) {
     if (backLightTimer == 0) {
-      //Force a message check, which flags the PIR status to the masterstation
+      //Force a message check, which flags the PIR status change to the masterstation
       lastMessageCheck = 0;
     }
+    pirStatus = 1;
     backLightTimer = BACKLIGHT_TIME;
+  } else {
+    pirStatus = 0;
   }
   return (backLightTimer > 0);
 }

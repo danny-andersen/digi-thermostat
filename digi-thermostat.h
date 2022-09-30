@@ -46,29 +46,12 @@
 
 //Wifi
 
+#define STATION_NUMBER 1
 //char NETWORK_STATUS[] = "WiFi %s";
 char LITERAL_STATUS[] = "%s";
 char SERVER_STATUS[] = "Server %s";
 char MESSAGE_FAIL[] = "Msg %s";
 //
-//#define MAX_GET_MSG_SIZE 55 //Max size of dynamic get msg with params
-//#define MAX_MESSAGE_SIZE 160
-//#define BUFF_SIZE MAX_MESSAGE_SIZE+6
-//
-////Status message format = /message?s=<station number>&trs=<resendmessages>&t=<temp>st=<thermostat set temp>&r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
-//char getMessage[MAX_GET_MSG_SIZE];
-//
-////Note: s=1 in messages as this is always for the thermostat station. If re-used, change the station number
-//char GET_MESSAGE_TEMPLATE[] = "message?s=1&rs=%d&t=%d&st=%d&r=%d&p=%d";
-//char HTTP[] = " HTTP/0.9";
-//char GET[] = "GET /";
-//char dateTimeStr[] = "%sdatetime%s";
-//char motdStrStr[] = "%smotd?s=1%s";
-//char extTempStr[] = "%sexttemp?s=1%s";
-////char thermTempStr[] = "%stemp%s";
-////char setTempStr[] = "%ssettemp?s=1%s";
-////char holidayStr[] = "%sholiday?s=1%s";
-
 #define ESP_AT_BAUD       9600
 
 #define MAX_RESPONSE_TIME 2000 // millis to wait for a response (byte to byte)
