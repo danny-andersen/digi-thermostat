@@ -76,8 +76,9 @@ byte rotaryB = 0;
 unsigned long lastTriggerTimeA = 0;
 unsigned long lastTriggerTimeB = 0;
 
-Bounce boostButton = Bounce();
-unsigned long boostTimer = 0;
+Bounce holidayButton = Bounce();
+unsigned long holidaySetTimer = 0;
+unsigned long holidayTime = 0;
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
@@ -95,7 +96,7 @@ uint8_t changedState = 0;  //Whether a state change has happened that should be 
 bool resendMessages = true;
 
 void setup() {
-  Serial.begin(9600);
+  // Serial.begin(9600);
   //  printf_begin();
   //  while (!Serial);
   currentMillis = millis();
@@ -116,8 +117,8 @@ void setup() {
   //Digi ins
   pinMode(BOOST_BUTTON, INPUT_PULLUP);
   digitalWrite(BOOST_BUTTON, HIGH);
-  boostButton.attach(BOOST_BUTTON);
-  boostButton.interval(DEBOUNCE_TIME);
+  holidayButton.attach(BOOST_BUTTON);
+  holidayButton.interval(DEBOUNCE_TIME);
 
   //Rotary encoder
   pinMode(ROTARY_A, INPUT);
@@ -216,11 +217,21 @@ void loop() {
   //  Serial.print(getTimeStr());
   //  Serial.print("\n");
 
-  if (boostTimer > 0) {
-    if (boostTimer > loopDelta) {
-      boostTimer -= loopDelta;
+  if (holidaySetTimer > 0) {
+    //Countdown timer for setting instant holiday time    
+    if (holidaySetTimer > loopDelta) {
+      holidaySetTimer -= loopDelta;
     } else {
-      boostTimer = 0;
+      holidaySetTimer = 0;
+    }
+  }
+
+  if (holidayTime > 0) {
+    //Countdown timer for instant holiday time
+    if (holidayTime > loopDelta) {
+      holidayTime -= loopDelta;
+    } else {
+      holidayTime = 0;
     }
   }
 
@@ -253,53 +264,46 @@ void loop() {
         changedState = 1;
       }
     } else {
-      SchedUnion lastSched;
-      memcpy(&lastSched.raw, &currentSched.raw, sizeof(SchedByElem));
       uint16_t mins = rtc.hour() * 60 + rtc.minute();
+      //Get current schedule
       getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
-      if (memcmp(&currentSched.raw, &lastSched.raw, sizeof(SchedByElem)) == 0) {
-        //Schedule has changed - find next schedule
-        uint16_t minsNext = currentSched.elem.end;
-        if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
-          //Currently in default sched
-          minsNext = mins;
-        }
-        getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true);
-        if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
-          //No more schedules for today (as returned the default schedule)
-          //Get first one tomorrow
-          int nextDay = rtc.dayOfWeek() + 1;
-          if (nextDay > 7) nextDay = 1;
-          getSetPoint(&nextSched, 0, nextDay, true);
-        }
-        currentSchedTemp = currentSched.elem.temp;
+      currentSchedTemp = currentSched.elem.temp;
+      uint16_t minsNext = currentSched.elem.end;
+      if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
+        //Currently in default sched
+        minsNext = mins;
       }
-      //      Serial.println("Scheduled set point: " + String(currentTemp, 1));
+      //Get next schedule
+      getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true);
+      if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
+        //No more schedules for today (as returned the default schedule)
+        //Get first one tomorrow
+        int nextDay = rtc.dayOfWeek() + 1;
+        if (nextDay > 7) nextDay = 1;
+        getSetPoint(&nextSched, 0, nextDay, true);
+      }
       if (lastScheduledTemp != currentSchedTemp) {
         //Only override set temp if there is a schedule change (cos it may have been manually set)
         currentSetTemp = currentSched.elem.temp;
         lastScheduledTemp = currentSched.elem.temp;
         changedState = 1;
       }
-
     }
   }
 
   //Read switch input
   readInputs();
 
-  //If not in boost mode, turn heating on or off depending on temp
-  if (boostTimer == 0) {
-    if ((currentSetTemp > currentTemp) && !heatOn) {
-      switchHeat(true);
-      changedState = 2;
-    }
-    if (heatOn && (currentTemp > (currentSetTemp + HYSTERSIS))) {
-      //Reached set temperature, turn heating off
-      //Note: Add in hystersis to stop flip flopping
-      switchHeat(false);
-      changedState = 2;
-    }
+  //Turn heating on or off depending on temp
+  if ((currentSetTemp > currentTemp) && !heatOn) {
+    switchHeat(true);
+    changedState = 2;
+  }
+  if (heatOn && (currentTemp > (currentSetTemp + HYSTERSIS))) {
+    //Reached set temperature, turn heating off
+    //Note: Add in hystersis to stop flip flopping
+    switchHeat(false);
+    changedState = 2;
   }
 
   //Check if motd has expired
@@ -398,8 +402,13 @@ void intHandlerRotaryA() {
   if (t - lastTriggerTimeA > DEBOUNCE_TIME) {
     rotaryA = digitalRead(ROTARY_A);
     //Only inc state on rising edge of A and B is off (CW rotation)
-    if (rotaryA && !rotaryB)
-      currentSetTemp = currentSetTemp + SET_INTERVAL;
+    if (rotaryA && !rotaryB) {
+      if (holidaySetTimer > 0) {
+        holidayTime += 30000; //Add 30mins to holiday time
+      } else {
+        currentSetTemp = currentSetTemp + SET_INTERVAL;
+      }
+    }
   }
   lastTriggerTimeA = t;
 }
@@ -410,21 +419,25 @@ void intHandlerRotaryB() {
   if (t - lastTriggerTimeB > DEBOUNCE_TIME) {
     rotaryB = digitalRead(ROTARY_B);
     //Only inc state on rising edge of B and A is off (CCW rotation)
-    if (rotaryB && !rotaryA)
-      currentSetTemp = currentSetTemp - SET_INTERVAL;
+    if (rotaryB && !rotaryA) {
+      if (holidaySetTimer > 0) {
+        holidayTime -= 30000; //Take 30mins off holiday time
+        if (holidayTime < 0) holidayTime = 0;
+      } else {
+        currentSetTemp = currentSetTemp - SET_INTERVAL;
+      }
+    }
   }
   lastTriggerTimeB = t;
 }
 
 void readInputs(void) {
-  if (boostButton.update() && boostButton.fell()) {
-    if (boostTimer == 0) {
-      //turn heating on for a bit, regardless of set temp
-      switchHeat(true);
-      boostTimer = BOOST_TIME;
+  if (holidayButton.update() && holidayButton.fell()) {
+    if (holidaySetTimer == 0) {
+      holidaySetTimer = HOLIDAY_SET_TIME;
     } else {
-      //boost already running - treat as cancel boost
-      boostTimer = 0;
+      //Treat as set holiday time
+      holidaySetTimer = 0;
     }
     changedState = 2;
   }
@@ -447,107 +460,11 @@ void setTempMotd(char templateStr[], char param[]) {
   scrollPos = 0;
 }
 
-//bool checkAndOpenTcp() {
-//  bool openAndReady = false;
-//  if (checkNetworkUp()) {
-//    if (networkDown) {
-//      setTempMotd(NETWORK_STATUS, "Up");
-//      networkDown = false;
-//    }
-//    networkDownTime = 0;
-//    if (openTCP()) {
-//      if (serverDown) {
-//        setTempMotd(SERVER_STATUS, "Up");
-//        serverDown = false;
-//      }
-//      openAndReady = true;
-//    } else {
-//      serverDown = true;
-//      setTempMotd(SERVER_STATUS, "Down");
-//    }
-//  } else {
-//    setTempMotd(NETWORK_STATUS, "Down");
-//    networkDown = true;
-//    serverDown = true;
-//  }
-//  if (networkDown || serverDown) {
-//    msgFail = true;
-//    resendMessages = true;
-//    networkDownTime += LOOP_DELAY;
-//    // Serial.print("Net down: ");
-//    // Serial.println(networkDownTime);
-//    if (networkDownTime >= RECONNECT_WAIT_TIME*12) {
-//      //Reset wifi adapter every 2 mins, if not connected
-//      connectToAP();
-//      networkDownTime = 0;
-//    }
-//  }
-//  return openAndReady;
-//}
-
-//bool connectToAP() {
-////   Serial.println("Reset wifi");
-//  drainSerial();
-//  drainSerial();
-//  wifiSerial.println(WIFI_RESET);
-//  drainSerial();
-//
-//  delay(RECONNECT_WAIT_TIME); //Let it connect and get an IP
-//  drainSerial();
-//
-//  //Set STA mode
-//  // debugSerial.println("STA mode");
-//  wifiSerial.println(SET_STA_MODE);
-//  if (not checkResponse(OK, 2, ERROR_RESP, 5)) {
-//    // printBuff(64);
-//    return false;
-//  }
-//  drainSerial();
-//
-//  if (checkNetworkUp()) {
-//    //Get local IP
-//    //  debugSerial.println("Retrieve IP: ");
-//    wifiSerial.println(GET_IP_CMD);
-//    if (not checkResponse(OK, 2, NO_IP, 5)) {
-////       printBuff(64);
-//      return false;
-//    }
-//    drainSerial();
-//  } else {
-//    return false;
-//  }
-//  return true;
-//}
-//
 void zeroSendBuffer() {
   for (int i = 0; i < MAX_GET_MSG_SIZE; i++) {
     getMessage[i] == 0;
   }
 }
-
-//uint8_t sendMsgBuffer() {
-//  //Count the message len
-//  int msglen = 0;
-//  for (int i = 0; i<MAX_GET_MSG_SIZE; i++) {
-//    msglen++;
-//    if (getMessage[i] == 0) {
-//      break;
-//    }
-//  }
-//  return sendMessage(getMessage, msglen+3); //newlines
-//}
-
-//bool getNextMessage() {
-//  zeroSendBuffer();
-//  //Status message format = /message?rs=resend messages, t=<temp> st=<thermostat set temp>&r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
-//  unsigned int runTime = getRunTime() / 1000; //No of secs
-//  //Send current status as params in request"message?s=1&rs=%d&t=%d&st=%d&r=%d&p=%d"
-//  strcat(getMessage, GET);
-//  snprintf(&getMessage[sizeof(GET)-1], MAX_GET_MSG_SIZE, GET_MESSAGE_TEMPLATE, (int)resendMessages, (int)currentTemp, (int)currentSetTemp, runTime, (backLightTimer == BACKLIGHT_TIME));
-//  strcat(getMessage, HTTP);
-//  uint8_t msgId = sendMsgBuffer();
-//  return processMessage(msgId);
-//}
 
 bool getNextMessage() {
   for (int i = 0; i < MAX_GET_MSG_SIZE; i++) {
@@ -615,47 +532,6 @@ bool getMotd() {
 //  uint8_t msgId = sendMessage(getMessage);
 //  processMessage(msgId);
 //}
-
-
-//OLD STYLE STARTS HERE:
-//bool getDateTime() {
-//  zeroSendBuffer();
-//  snprintf(getMessage, MAX_GET_MSG_SIZE, dateTimeStr, GET, HTTP);
-//  uint8_t msgId = sendMsgBuffer();
-////  Serial.println("Got datetime msg: " + msgId);
-//  return processMessage(msgId);
-//}
-//
-//bool getMotd() {
-//  zeroSendBuffer();
-//  snprintf(getMessage, MAX_GET_MSG_SIZE, motdStrStr, GET, HTTP);
-//  uint8_t msgId = sendMsgBuffer();
-//  return processMessage(msgId);
-//}
-//
-//bool getExtTemp() {
-//  zeroSendBuffer();
-//  snprintf(getMessage, MAX_GET_MSG_SIZE, extTempStr, GET, HTTP);
-//  uint8_t msgId = sendMsgBuffer();
-//  return processMessage(msgId);
-//}
-
-//void getSetTemp() {
-//  zeroSendBuffer();
-//  snprintf(getMessage, MAX_GET_MSG_SIZE, setTempStr, GET, HTTP);
-//  return processMessage(msgId);
-//}
-
-//void getThermTemp() {
-//  uint8_t msgId = sendMessage(thermTempStr, sizeof(thermTempStr)+3);
-//  processMessage(msgId);
-//}
-//
-//void getHoliday() {
-//  uint8_t msgId = sendMessage(holidayStr, sizeof(holidayStr)+3);
-//  processMessage(msgId);
-//}
-//
 
 bool processMessage(uint8_t msgId) {
   bool msgRx = true;
@@ -849,20 +725,10 @@ void displayState() {
   //Display Row 1 - Current time and temperature
   lcd.setCursor(0, 0);
   int pos = getTimeStr(&lcdBuff[0]);
-  String currTempStr;
-  if (currentTemp == 1000) {
-    currTempStr = "??.?";
-  } else if (currentTemp == 0) {
-    currTempStr = " 0.0";
-  } else {
-    currTempStr = String((float)(currentTemp / 10.0), 1); //Only way to generate a float str in Arduino
-  }
-  if (currentTemp < 100 && currentTemp > 0) {
-    currTempStr = "0" + currTempStr;
-  }
+  String currTempStr = getTempStr(currentTemp);
   currTempStr.toCharArray(tempStr, TEMP_SIZE);
   sprintf(lcdBuff, "%s   %sC", lcdBuff, tempStr);
-  Serial.println(lcdBuff);
+  // Serial.println(lcdBuff);
   lcd.print(lcdBuff);
 
   //Display row 2 - This is one of: Boiler on time + Set temp, Current date + Set Temp, Sched end or start time + Set Temp
@@ -871,106 +737,96 @@ void displayState() {
   char sp[] = " ";
   char runTimeStr[11]; //10 chars on LCD + end of str
   runTimeStr[0] = '\0';
+  String setTempStr;
   if (rtc.second() % 2) {
     //Show schedule end or next sched start
-    if (onHoliday) {
+    if (onHoliday && holidayTime == 0) {
+      //On scheduled holiday
       strncat(runTimeStr, "On hols!!!", 10);
-    } else if (currentSched.elem.day == 0) {
-      //Currently in the default schedule valid for all times, so show next sched start
+    } else if (holidayTime > 0) {
+      //Currently off due to instant away time set - show when on
       char on[] = "ON @ HHMM";
-      getHoursMins(nextSched.elem.start, &on[5]);
+      getFutureTime(holidayTime, &on[5]);
       strncat(&runTimeStr[0], &on[0], strlen(on));
       strncat(&runTimeStr[9], sp, 1);
-    } else {
-      //Show end time of current sched
-      char off[] = "OFF @ HHMM";
-      getHoursMins(currentSched.elem.end, &off[6]);
-      strncat(runTimeStr, &off[0], strlen(off));
+    } else { 
+      //Show next schedule temp and time
+      char nextTime[] = "HHMM";
+      getHoursMins(nextSched.elem.start, &nextTime[0]);
+      setTempStr = getTempStr(nextSched.elem.temp);
+      setTempStr.toCharArray(tempStr, TEMP_SIZE);
+      // strncat(&on[0], &tempStr[0], 4);
+      // strncat(&runTimeStr[0], &on[0], strlen(on));
+      snprintf(&runTimeStr[0], 11, "%sC@%s", tempStr, nextTime);
     }
   } else {
-    //Show boiler runtime or date
-    if (boilerRunTime != 0) {
-      //Boiler is on - display how long for on row 2
-      char run[] = "Run:MM:SS";
-      getMinSec(boilerRunTime, &run[4]);
-      strncat(runTimeStr, &run[0], strlen(run));
-      strncat(&runTimeStr[8], sp, 1);
-      //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
-    } else {
-      //Boiler not on - Show date
-      getDateStr(runTimeStr);
-      // strncat(&runTimeStr[0], dt, strlen(dt));
-    }
+    //Not on hols - Show date
+    getDateStr(runTimeStr);
+    // strncat(&runTimeStr[0], dt, strlen(dt));
   }
-  String setTempStr;
-  if (currentSetTemp == 0) {
-    setTempStr = " 0.0";
-  } else {
-    setTempStr = String((float)(currentSetTemp / 10.0), 1); //Only way to generate a float str in Arduino
-  }
-  if (currentSetTemp < 100 && currentSetTemp > 0) {
-    setTempStr = "0" + setTempStr;
-  }
+  setTempStr = getTempStr(currentSetTemp);
   setTempStr.toCharArray(tempStr, TEMP_SIZE);
   sprintf(&lcdBuff[0], "%s Set:%sC", runTimeStr, tempStr);
   //    lcdBuff[LCD_COLS] = '\0';
-  Serial.println(lcdBuff);
+  // Serial.println(lcdBuff);
   delay(100);
   lcd.print(lcdBuff);
   // lcd.print(String(runTimeStr) + " Set:" + tempStr);
 
   lcd.setCursor(0, 2);
-  int len = 0;
-  if (strlen(windStr) != 0 && rtc.second() % 2) {
-    //display wind speed
-    len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+  uint8_t len = 0;
+  uint8_t wlen = strlen(windStr);
+  char run[] = "Run : MM:SS ";
+  if (wlen != 0 && boilerRunTime != 0) {
+    if (rtc.second() % 2) {
+      //display wind speed
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+    } else {
+      //Boiler is on - display how long for on row 2
+      getMinSec(boilerRunTime, &run[6]);
+      // strncat(runTimeStr, &run[0], strlen(run));
+      len = snprintf(lcdBuff, 12, "%s", run);
+      // strncat(&runTimeStr[8], sp, 1);
+      //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
+    }
+  } else if (wlen != 0) {
+      //display wind speed
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+  } else if (boilerRunTime != 0) {
+      getMinSec(boilerRunTime, &run[6]);
+      len = snprintf(lcdBuff, 12, "%s", run);
   } else {
-    // char bsbuf[MAX_WIND_SIZE];
-    char bs[] = "Heat: %s";
-    char on[] = "ON";
-    char off[] = "OFF";
-    // bsbuf[0] = '\0';
-    // strncat(&bsbuf[0], &bs[0], strlen(bs));
+    char bs[] = "Heat : %s";
+    char on[] = "ON   ";
+    char off[] = "OFF  ";
     if (heatOn) {
       len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, on);
-      // strncat(&bsbuf[strlen(bsbuf)-1], &on[0], strlen(on));
     } else {
       len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, off);
-      // strncat(&bsbuf[strlen(bsbuf)-1], &off[0], strlen(off));
     }
   }
   lcdBuff[len] = '\0';
   // int i;
   // i = strlen(boilerStatStr);
-  while (strlen(lcdBuff) < MAX_WIND_SIZE - 1) {
-    lcdBuff[len] = ' ';
-    len++;
-    lcdBuff[len] = '\0';
-  }
-  String extTempStr;
-  if (extTemp == 1000) {
-    extTempStr = "??.?";
-  } else if (extTemp == 0) {
-    extTempStr = " 0.0";
-  } else {
-    extTempStr = String((float)(extTemp / 10.0), 1); //Only way to generate a float str in Arduino
-  }
-  if (extTemp < 100 && extTemp > 0) {
-    currTempStr = "0" + currTempStr;
-  }
+  // while (strlen(lcdBuff) < MAX_WIND_SIZE - 1) {
+  //   lcdBuff[len] = ' ';
+  //   len++;
+  //   lcdBuff[len] = '\0';
+  // }
+  String extTempStr = getTempStr(extTemp);
   extTempStr.toCharArray(tempStr, TEMP_SIZE);
   if (extTemp >= 0) {
     sprintf(&lcdBuff[len - 1], " Ext:%sC", tempStr);
   } else {
     sprintf(&lcdBuff[len - 1], " Ext:%s", tempStr);
   }
-  Serial.println(lcdBuff);
+  // Serial.println(lcdBuff);
   delay(100);
   lcd.print(lcdBuff);
   // lcd.print(String(boilerStatStr) + " Ext:" + extTempStr);
   if (strlen(motd) <= LCD_COLS) {
     lcd.setCursor(0, 3);
-    Serial.println(motd);
+    // Serial.println(motd);
     delay(100);
     lcd.print(motd); //Only print here if motd fits, otherwise needs to scroll
   }
@@ -1016,7 +872,7 @@ void scrollLcd() {
   lcdBuff[LCD_COLS] = '\0';
   lcd.setCursor(0, 3);
   lcd.print(lcdBuff);
-  Serial.println(lcdBuff);
+  // Serial.println(lcdBuff);
 }
 
 boolean checkBackLight() {
@@ -1047,10 +903,8 @@ boolean checkBackLight() {
 
 unsigned long getRunTime() {
   unsigned long runTime = 0;
-  if (boostTimer > 0) {
-    runTime = boostTimer;
-  } else if (heatOn) {
-    runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
+  if (heatOn) {
+      runTime = calcRunTime(currentTemp, currentSetTemp + HYSTERSIS, extTemp);
   }
   return runTime;
 }
@@ -1132,49 +986,54 @@ void getSetPoint(SchedUnion *schedule, uint16_t mins, int currDay, bool nextSche
 }
 
 boolean checkOnHoliday() {
-  HolidayDateStr *hols;
   boolean afterStart = false;
   boolean beforeEnd = false;
-  if (holiday.elem.valid == 1) {
-    hols = &(holiday.elem.startDate);
-    if (rtc.year() > hols->year) {
-      afterStart = true;
-    } else if (rtc.year() == hols->year) {
-      if (rtc.month() > hols->month) {
+  if (holidayTime > 0) {
+    afterStart = true;
+    beforeEnd = true;    
+  } else {
+    HolidayDateStr *hols;
+    if (holiday.elem.valid == 1) {
+      hols = &(holiday.elem.startDate);
+      if (rtc.year() > hols->year) {
         afterStart = true;
-      } else if (rtc.month() == hols->month) {
-        if (rtc.day() > hols->dayOfMonth) {
+      } else if (rtc.year() == hols->year) {
+        if (rtc.month() > hols->month) {
           afterStart = true;
-        } else if (rtc.day() == hols->dayOfMonth) {
-          if (rtc.hour() >= hols->hour) {
+        } else if (rtc.month() == hols->month) {
+          if (rtc.day() > hols->dayOfMonth) {
             afterStart = true;
+          } else if (rtc.day() == hols->dayOfMonth) {
+            if (rtc.hour() >= hols->hour) {
+              afterStart = true;
+            }
           }
         }
       }
-    }
-    hols = &(holiday.elem.endDate);
-    if (rtc.year() < hols->year) {
-      beforeEnd = true;
-    } else if (rtc.year() == hols->year) {
-      if (rtc.month() < hols->month) {
+      hols = &(holiday.elem.endDate);
+      if (rtc.year() < hols->year) {
         beforeEnd = true;
-      } else if (rtc.month() == hols->month) {
-        if (rtc.day() < hols->dayOfMonth) {
+      } else if (rtc.year() == hols->year) {
+        if (rtc.month() < hols->month) {
           beforeEnd = true;
-        } else if (rtc.day() == hols->dayOfMonth) {
-          if (rtc.hour() < hols->hour) {
+        } else if (rtc.month() == hols->month) {
+          if (rtc.day() < hols->dayOfMonth) {
             beforeEnd = true;
+          } else if (rtc.day() == hols->dayOfMonth) {
+            if (rtc.hour() < hols->hour) {
+              beforeEnd = true;
+            }
           }
         }
       }
-    }
-    //    Serial.println("after start:" + String(afterStart) + " before end:" + String(beforeEnd));
-    if (!beforeEnd) {
-      //Holiday is over - remove it
-      holiday.elem.valid = 0;
-      int cnt;
-      cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
-      eepromWrite(cnt, 0); //Set holiday as invalid
+      //    Serial.println("after start:" + String(afterStart) + " before end:" + String(beforeEnd));
+      if (!beforeEnd) {
+        //Holiday is over - remove it
+        holiday.elem.valid = 0;
+        int cnt;
+        cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+        eepromWrite(cnt, 0); //Set holiday as invalid
+      }
     }
   }
   return (afterStart && beforeEnd);
@@ -1200,6 +1059,22 @@ unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
   return noMs;
 }
 
+//Calculate a time in the future using current time + delta in ms
+void getFutureTime(unsigned long tms, char *charBuf) {
+  unsigned long tmins = tms / 60000;   
+  unsigned long hours = rtc.hour() + (tmins / 60);
+  unsigned long mins = rtc.minute() + tmins % 60;
+  if (mins > 60) {
+    hours++;
+    mins -= 60;    
+  }
+  if (hours > 24) {
+    hours -= 24;
+  }
+  sprintf(charBuf, "%02d", hours);
+  sprintf(charBuf + 2, "%02d", mins);
+}
+
 void getHoursMins(unsigned long tmins, char *charBuf) {
   unsigned long hours = tmins / 60;
   unsigned long mins = tmins % 60;
@@ -1222,13 +1097,28 @@ void getMinSec(unsigned long timeMs, char *charBuf) {
   }
 }
 
+String getTempStr(int16_t temp) {
+  String tempStr;
+  if (temp == 1000) {
+    tempStr = "??.?";
+  } else  if (temp == 0) {
+    tempStr = " 0.0";
+  } else {
+    tempStr = String((float)(temp / 10.0), 1); //Only way to generate a float str in Arduino
+  }
+  if (temp < 100 && temp > 0) {
+    tempStr = "0" + tempStr;
+  }
+  return tempStr;
+}
+
 int getTimeStr(char *ptr) {
   // int dayofweek = 1;
   // int h = 12;
   // int m = 13;
   // int s = 31;
   // return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[dayofweek - 1], h, m, s );
-   return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
+  return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
 }
 
 void getDateStr(char *ptr) {
@@ -1236,7 +1126,7 @@ void getDateStr(char *ptr) {
   // int m = 6;
   // int y = 2022;
   // return sprintf(ptr, "%02d %s %02d ", d, monNames[m], y);
-   return sprintf(ptr, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
+  return sprintf(ptr, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
 }
 
 void switchHeat(boolean on) {
@@ -1524,315 +1414,3 @@ void resetBuffer() {
   }
 }
 
-
-//bool checkNetworkUp() {
-//  //Check network up
-//  bool networkUp = true;
-//  drainSerial();
-////  Serial.println("wifi");
-//  wifiSerial.println(QUERY_AP);
-//  if (not checkResponse(OK, 2, NO_AP, 5)) {
-//      networkUp = false;
-//  }
-//  drainSerial();
-//  return networkUp;
-//}
-
-//bool openTCP() {
-//  bool connected = true;
-//  drainSerial();
-////  Serial.println("tcp");
-//  wifiSerial.println(OPEN_TCP);
-//  if (not checkResponse(CONNECTED, 9, NO_IP, 5)) {
-//      connected = false;
-//  }
-//  return connected;
-//}
-//
-//bool closeTCP() {
-//  //  debugSerial.println("Close TCP: ");
-//  wifiSerial.println(CLOSE_TCP);
-//  if (not checkResponse(OK, 2, ERROR_RESP, 5)) {
-//     return false;
-//  }
-//  drainSerial();
-//}
-
-//uint8_t sendMessage(char msg[], uint8_t len) {
-////  debugSerial.print("Send msg len:");
-////  debugSerial.println(len);
-////  Serial.println(msg);
-//  drainSerial();
-//  wifiSerial.print(SEND_LEN);
-//  wifiSerial.println(len);
-//  if (not checkResponse(OK, 2, ERROR_RESP, 5)) {
-//    //  debugSerial.println("Fail send");
-//     return 0;
-//  }
-//  drainSerial();
-////  debugSerial.println("Sending HTTPGET");
-//  //Send http request
-//  wifiSerial.println(msg);
-//  wifiSerial.println();
-//  wifiSerial.println();
-//  wifiSerial.println();
-//  wifiSerial.println();
-//  wifiSerial.println();
-//  flickerLED();
-//  uint8_t msgId = 0; //Signifies no message
-//  uint16_t respLen = waitForHttpResponse();
-//  if (respLen > 0) {
-//    //Got HTTP response - extract content part
-//    uint16_t msgLen = extractMessage(respLen);
-//    if (msgLen > 0){
-//      Message *msgp = (Message *)&buff[0];
-//      msgId = msgp->id;
-//      uint16_t rxCrc = msgp->crc;
-//      msgp->crc = 0;
-//      crc_t crc = crc_calculate(&buff[0], msgp->len);
-//      if (crc != rxCrc) {
-//        setTempMotd(MESSAGE_FAIL, "CRC");
-//        msgFail = true;
-//        msgId = 0;
-//      }
-////    snprintf(motd, MAX_MOTD_SIZE, "Rx msg %d", msgId);
-//      if (msgFail) {
-//          setTempMotd(MESSAGE_FAIL, "OK");
-//          msgFail = false;
-//      }
-//    } else {
-//        setTempMotd(MESSAGE_FAIL, "No MLen");
-//        msgFail = true;
-//        msgId = 0;
-//    }
-//  } else {
-////    printBuff(64);
-//    setTempMotd(MESSAGE_FAIL, "No HLen");
-//    // debugSerial.println("Fail rx:");
-//    msgFail = true;
-//    msgId = 0;
-//  }
-//  return msgId;
-//}
-//
-//uint16_t extractMessage(uint16_t msgLen) {
-//  uint16_t contentLen = 0;
-//  bool gotLen = false;
-//  //Look for Content length in header part of response
-//  uint16_t pos = findStringInBuff(buff, CONTENT_LENGTH, sizeof(CONTENT_LENGTH)-1, msgLen);
-//  if (pos != -1) {
-//    pos += sizeof(CONTENT_LENGTH);
-//    //Retrieve content length
-//    char lenStr[4];
-//    uint16_t endPos = pos;
-//    for (; endPos<(pos + 3); endPos++) {
-//      if (int(buff[endPos]) == 13) {
-//        endPos++;
-//        break; //Reached end of line
-//      }
-//      lenStr[endPos-pos] = buff[endPos];
-//    }
-//    lenStr[endPos-pos] = '\0'; //null terminate
-//    contentLen = atoi(&lenStr[0]);
-//    if (contentLen > 0 ) {
-//      endPos += 3; //0xd, 0xa, 0xd, 0xa at end of content str and before content
-//      //shift bytes down in buff
-//      shiftBuffDown(endPos, msgLen); //Now we should just have the message content in the buff..
-//    }
-//  }
-//  return contentLen;
-//}
-
-//void resetBuffer() {
-//  //Reset receive buffer
-//  for (uint32_t i = 0; i<MAX_MESSAGE_SIZE; i++) {
-//    buff[i] = 0;
-//  }
-//}
-
-//bool checkResponse(char *str, uint8_t lenStr, char *failStr, uint8_t lenFail) {
-//  unsigned long start = millis();
-//  uint16_t bufPos = 0;
-//  uint16_t pos = -1;
-//  unsigned long waitTime = 0;
-//  bool gotResponse = false;
-//  bool success = false;
-//  while (waitTime < MAX_RESPONSE_TIME && !gotResponse) {
-//    uint16_t len = receiveData(bufPos);
-//    if (len > 0) {
-//      bufPos += len;
-//      //Look for specific fail response
-//      pos = findStringInBuff(buff, failStr, 5, lenFail);
-//      if (pos != -1) {
-//        gotResponse = true;
-//        success = false;
-//        break;
-//      }
-//      //Look for specific success response
-//      pos = findStringInBuff(buff, str, lenStr, bufPos);
-//      if (pos != -1) {
-//        gotResponse = true;
-//        success = true;
-//        break;
-//      }
-//      //Then look for generic error response
-//      pos = findStringInBuff(buff, ERROR_RESP, 5, bufPos);
-//      if (pos != -1) {
-//        gotResponse = true;
-//        success = false;
-//        break;
-//      }
-//      //Look for generic OK response
-//      pos = findStringInBuff(buff, OK, 2, bufPos);
-//      if (pos != -1) {
-//        gotResponse = true;
-//        success = true;
-//        break;
-//      }
-//    }
-//    if (!gotResponse) {
-//      //Wait for a bit for the next bytes to arrive
-//      delay(10);
-//    }
-//    waitTime = millis() - start;
-//  }
-////  Serial.println("Check:");
-////  printBuff(64);
-//  return success;
-//}
-//
-//uint16_t waitForHttpResponse() {
-//  unsigned long start = millis();
-//  uint16_t bufPos = 0;
-//  unsigned long waitTime = 0;
-//  uint16_t msgLen = 0;
-//  bool sent = false;
-//  bool gotIPD = false;
-//  bool gotMsgLen = false;
-//  bool gotMsg = false;
-//  while (waitTime < MAX_RESPONSE_TIME && !gotMsg) {
-//    uint16_t len = receiveData(bufPos);
-//    if (len > 0) {
-//      bufPos += len;
-//      if (!sent) {
-//        //Check for SEND OK
-//        uint16_t pos = findStringInBuff(buff, sendOK, sizeof(sendOK)-1, bufPos);
-//        if (pos != -1) {
-//          //Send went OK
-//          //shift bytes down in buff
-//          uint16_t endPos = pos+sizeof(sendOK)-1;
-//          shiftBuffDown(endPos, bufPos);
-//          bufPos -= endPos;
-//          sent = true;
-//        }
-//      }
-//      if (sent && !gotIPD) {
-//        //Look for IPD
-//        uint16_t pos = findStringInBuff(buff, ipd, sizeof(ipd)-1, bufPos);
-//        if (pos != -1) {
-//          //shift bytes down in buff
-//          uint16_t endPos = pos+sizeof(ipd)-1;
-//          shiftBuffDown(endPos, bufPos);
-//          bufPos -= endPos;
-//          gotIPD = true;
-//        }
-//      }
-//      if (sent && gotIPD && !gotMsgLen) {
-//        //Find the colon
-//        uint16_t pos = findStringInBuff(buff, colon, sizeof(colon)-1, bufPos);
-//        if (pos != -1) {
-//          //Retrieve msglength
-//          char lenStr[4];
-//          for (int i=0; i<pos && i<3; i++) {
-//            lenStr[i] = buff[i];
-//          }
-//          lenStr[pos] = '\0'; //null terminate
-//          msgLen = atoi(&lenStr[0]);
-//          //shift bytes down in buff
-//          uint16_t endPos = pos+1;
-//          shiftBuffDown(endPos, bufPos);
-//          bufPos -= endPos;
-//          gotMsgLen = true;
-//          if (msgLen > BUFF_SIZE) {
-//            msgFail = true;
-//            msgLen = BUFF_SIZE;
-//            setTempMotd(MESSAGE_FAIL, "Max Len");
-////            Serial.print("Max Rx Msg Len:");
-////            Serial.println(msgLen);
-//          }
-//        }
-//      }
-//      if (sent && gotIPD && gotMsgLen && !gotMsg) {
-//        if (bufPos >= msgLen) {
-//          //got all of the message
-//          gotMsg = true;
-//        }
-//      }
-//    }
-//    if (!gotMsg) {
-//      //Flicker LED to wait for a bit for the next bytes to arrive
-//      flickerLED();
-//    }
-//    waitTime = millis() - start;
-//  }
-//  if (waitTime >= MAX_RESPONSE_TIME && !gotMsg) {
-//    snprintf(motd, MAX_MOTD_SIZE, SERVER_STATUS, " TO");
-//  }
-//  return msgLen;
-//}
-//
-//void shiftBuffDown(uint8_t pos, uint16_t maxPos) {
-//  uint8_t p = pos;
-//  for (int i=0; i<maxPos; i++) {
-//    buff[i] = buff[p++];
-//  }
-//}
-//
-//uint16_t receiveData(uint16_t startPosition){
-//  uint16_t len = 0;
-//  uint16_t pos = startPosition;
-//  while(wifiSerial.available() > 0 && pos < BUFF_SIZE) {
-//      uint8_t b = wifiSerial.read();
-//      buff[pos++] = b;
-//      len++;
-//      // debugSerial.print(b, HEX);
-//  }
-//  return len;
-//}
-//
-////void printBuff(uint32_t pos) {
-////    Serial.print("Hex:");
-////    for (uint32_t i = 0; i<pos && i<MAX_MESSAGE_SIZE; i++) {
-////      Serial.print((uint8_t)buff[i], HEX);
-////      Serial.print(',');
-////    }
-////    Serial.print("\nText:");
-////    for (uint32_t i = 0; i<pos && i<MAX_MESSAGE_SIZE; i++) {
-////      Serial.print((char) buff[i]);
-////    }
-////    Serial.println();
-////}
-//
-//
-//uint16_t findStringInBuff(uint8_t bf[], char str[], uint8_t strLen, uint16_t maxPos) {
-//  uint16_t startPos = -1;
-//  for (int i = 0; (i+strLen)<maxPos; i++) {
-//    if (bf[i] == str[0]) {
-//      startPos = i;
-//      uint16_t strPos = 0;
-//      uint16_t endStr = i+strLen;
-//      int j = i;
-//      for (;j < endStr && j<maxPos; j++) {
-//        if (bf[j] != str[strPos++]) {
-//          break;
-//        }
-//      }
-//      if (j >= endStr) { //All chars matched
-//        break;
-//      } else {
-//        startPos = -1;
-//      }
-//    }
-//  }
-//  return startPos;
-//}

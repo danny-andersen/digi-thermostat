@@ -35,7 +35,7 @@
 #define DEBOUNCE_TIME 200 //switch must be down for 1000us 
 #define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
 #define SET_INTERVAL 1 //Amount to increase the temp by, per button press
-#define BOOST_TIME 600000UL //10min Length of time to turn on heat regardless of set temperature
+#define HOLIDAY_SET_TIME 60000UL //1min to manually set period to go into holiday mode using dial
 #define BACKLIGHT_TIME 30000UL //30s time to leave on once PIR triggered
 
 #define LCD_ROWS 4

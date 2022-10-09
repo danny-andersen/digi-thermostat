@@ -4,7 +4,8 @@ Description=Masterstation to send commands to Digital thermostat
 [Service]
 #Environment= MY_ENVIRONMENT_VAR =/path/to/file.config
 WorkingDirectory=/home/danny/digi-thermostat/masterstation
-ExecStart=/home/danny/digi-thermostat/masterstation/masterstation
+#ExecStart=/home/danny/digi-thermostat/masterstation/masterstation.sh
+ExecStart=uwsgi --http 0.0.0.0:5000 --rem-header Content-type --master --workers 4 -w masterstation:app --plugin python3
 Restart=always
 
 [Install]
