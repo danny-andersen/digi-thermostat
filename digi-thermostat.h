@@ -111,7 +111,7 @@ struct DateTimeStruct {
   uint8_t dayOfWeek;
   uint8_t dayOfMonth;
   uint8_t month;
-  uint16_t year;
+  uint8_t year;
 }; 
 
 struct Motd {

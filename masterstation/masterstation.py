@@ -34,8 +34,8 @@ EXTTEMP_FILE = "setExtTemp.txt"
 HOLIDAY_FILE = "holiday.txt"
 SET_TEMP_FILE = "setTemp.txt"
 STATUS_FILE = "status.txt"
-# THERM_FILE = "/sys/bus/w1/devices/28-051673fdeeff/w1_slave"
-THERM_FILE = "w1_slave"
+THERM_FILE = "/sys/bus/w1/devices/28-051673fdeeff/w1_slave"
+#THERM_FILE = "w1_slave"
 STATION_FILE = "-context.json"
 
 EXT_TEMP_EXPIRY_SECS = 3600 # an hour
@@ -78,7 +78,7 @@ class DateTimeStruct(LittleEndianStructure):
         ("dayOfWeek",   c_ubyte),
         ("dayOfMonth", c_ubyte),
         ("month", c_ubyte),
-        ("year", c_ushort)]
+        ("year", c_ubyte)]
 
 class HolidayDateStr(Structure):
   _fields_ = [
@@ -370,10 +370,10 @@ def getDateTime():
     dt.sec = now.second
     dt.min = now.minute
     dt.hour = now.hour
-    dt.dayOfWeek = now.weekday() 
+    dt.dayOfWeek = now.isoweekday() #1 = Monday, 7 = Sunday, to match RTC
     dt.dayOfMonth = now.day
     dt.month = now.month
-    dt.year = now.year
+    dt.year = now.year - 2000
     with open("dateMsg", "w", encoding="utf-8") as f:
         f.write(f"Time: {dt.hour}:{dt.min}:{dt.sec}")
     msgBytes = getMessageEnvelope(SET_DATE_TIME_MSG, bytearray(dt), sizeof(DateTimeStruct))

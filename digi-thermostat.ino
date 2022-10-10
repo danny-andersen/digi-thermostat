@@ -268,13 +268,13 @@ void loop() {
       //Get current schedule
       getSetPoint(&currentSched, mins, rtc.dayOfWeek(), false);
       currentSchedTemp = currentSched.elem.temp;
-      uint16_t minsNext = currentSched.elem.end;
-      if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
-        //Currently in default sched
-        minsNext = mins;
-      }
+      // uint16_t minsNext = currentSched.elem.end;
+      // if (currentSched.elem.day == 0 || currentSched.elem.end == 0) {
+      //   //Currently in default sched
+      //   minsNext = mins;
+      // }
       //Get next schedule
-      getSetPoint(&nextSched, minsNext, rtc.dayOfWeek(), true);
+      getSetPoint(&nextSched, mins, rtc.dayOfWeek(), true);
       if (memcmp(&nextSched.raw, &defaultSchedule.raw, sizeof(SchedByElem)) == 0) {
         //No more schedules for today (as returned the default schedule)
         //Get first one tomorrow
@@ -404,7 +404,7 @@ void intHandlerRotaryA() {
     //Only inc state on rising edge of A and B is off (CW rotation)
     if (rotaryA && !rotaryB) {
       if (holidaySetTimer > 0) {
-        holidayTime += 30000; //Add 30mins to holiday time
+        holidayTime += 30 * 60000; //Add 30mins to holiday time
       } else {
         currentSetTemp = currentSetTemp + SET_INTERVAL;
       }
@@ -421,7 +421,7 @@ void intHandlerRotaryB() {
     //Only inc state on rising edge of B and A is off (CCW rotation)
     if (rotaryB && !rotaryA) {
       if (holidaySetTimer > 0) {
-        holidayTime -= 30000; //Take 30mins off holiday time
+        holidayTime -= 30 * 60000; //Take 30mins off holiday time
         if (holidayTime < 0) holidayTime = 0;
       } else {
         currentSetTemp = currentSetTemp - SET_INTERVAL;
@@ -721,34 +721,41 @@ void displayState() {
     lcd.clear();
   }
   char tempStr[TEMP_SIZE];
-  lcdBuff[0] = '\0';
   //Display Row 1 - Current time and temperature
   lcd.setCursor(0, 0);
-  int pos = getTimeStr(&lcdBuff[0]);
-  String currTempStr = getTempStr(currentTemp);
-  currTempStr.toCharArray(tempStr, TEMP_SIZE);
-  sprintf(lcdBuff, "%s   %sC", lcdBuff, tempStr);
+  lcdBuff[0] = '\0';
+  char runTimeStr[13]; //10 chars on LCD + end of str
+  runTimeStr[0] = '\0';
+  if (holidaySetTimer == 0) {
+    int pos = getTimeStr(&runTimeStr[0], 13);
+    String currTempStr = getTempStr(currentTemp);
+    currTempStr.toCharArray(tempStr, TEMP_SIZE);
+    snprintf(lcdBuff, LCD_COLS+1, "%s   %sC", runTimeStr, tempStr);
+  } else {
+    //Setting instant holiday time
+      getFutureTime(holidayTime, &runTimeStr[0], 10);
+      snprintf(lcdBuff, LCD_COLS+1, "Off until: %s", &runTimeStr[0]);
+  }
   // Serial.println(lcdBuff);
   lcd.print(lcdBuff);
 
   //Display row 2 - This is one of: Boiler on time + Set temp, Current date + Set Temp, Sched end or start time + Set Temp
   lcd.setCursor(0, 1);
-  //    lcdBuff[0] = '\0';
-  char sp[] = " ";
-  char runTimeStr[11]; //10 chars on LCD + end of str
   runTimeStr[0] = '\0';
+  //    lcdBuff[0] = '\0';
+  // char sp[] = " ";
   String setTempStr;
   if (rtc.second() % 2) {
-    //Show schedule end or next sched start
+    //Show hoiday or next sched start
     if (onHoliday && holidayTime == 0) {
       //On scheduled holiday
       strncat(runTimeStr, "On hols!!!", 10);
     } else if (holidayTime > 0) {
       //Currently off due to instant away time set - show when on
-      char on[] = "ON @ HHMM";
-      getFutureTime(holidayTime, &on[5]);
-      strncat(&runTimeStr[0], &on[0], strlen(on));
-      strncat(&runTimeStr[9], sp, 1);
+      char on[5];
+      getFutureTime(holidayTime, &on[0], 5);
+      snprintf(&runTimeStr[0], 13, "ON @ %s  ", &on[0]);
+      // strncat(&runTimeStr[9], sp, 1);
     } else { 
       //Show next schedule temp and time
       char nextTime[] = "HHMM";
@@ -760,13 +767,14 @@ void displayState() {
       snprintf(&runTimeStr[0], 11, "%sC@%s", tempStr, nextTime);
     }
   } else {
-    //Not on hols - Show date
-    getDateStr(runTimeStr);
+    //Show date
+    getDateStr(&runTimeStr[0], 11);
+    // char * dt = &(getDateStr())[0];
     // strncat(&runTimeStr[0], dt, strlen(dt));
   }
   setTempStr = getTempStr(currentSetTemp);
   setTempStr.toCharArray(tempStr, TEMP_SIZE);
-  sprintf(&lcdBuff[0], "%s Set:%sC", runTimeStr, tempStr);
+  snprintf(&lcdBuff[0], LCD_COLS+1, "%s Set:%sC", runTimeStr, tempStr);
   //    lcdBuff[LCD_COLS] = '\0';
   // Serial.println(lcdBuff);
   delay(100);
@@ -780,7 +788,7 @@ void displayState() {
   if (wlen != 0 && boilerRunTime != 0) {
     if (rtc.second() % 2) {
       //display wind speed
-      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, "%s", windStr);
     } else {
       //Boiler is on - display how long for on row 2
       getMinSec(boilerRunTime, &run[6]);
@@ -791,18 +799,18 @@ void displayState() {
     }
   } else if (wlen != 0) {
       //display wind speed
-      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, "%s", windStr);
   } else if (boilerRunTime != 0) {
       getMinSec(boilerRunTime, &run[6]);
       len = snprintf(lcdBuff, 12, "%s", run);
   } else {
     char bs[] = "Heat : %s";
-    char on[] = "ON   ";
-    char off[] = "OFF  ";
+    char on[] = "ON  ";
+    char off[] = "OFF ";
     if (heatOn) {
-      len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, on);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, bs, on);
     } else {
-      len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, off);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, bs, off);
     }
   }
   lcdBuff[len] = '\0';
@@ -990,7 +998,8 @@ boolean checkOnHoliday() {
   boolean beforeEnd = false;
   if (holidayTime > 0) {
     afterStart = true;
-    beforeEnd = true;    
+    beforeEnd = true;
+    holiday.elem.temp = 100;
   } else {
     HolidayDateStr *hols;
     if (holiday.elem.valid == 1) {
@@ -1060,7 +1069,7 @@ unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
 }
 
 //Calculate a time in the future using current time + delta in ms
-void getFutureTime(unsigned long tms, char *charBuf) {
+void getFutureTime(unsigned long tms, char *charBuf, uint8_t len) {
   unsigned long tmins = tms / 60000;   
   unsigned long hours = rtc.hour() + (tmins / 60);
   unsigned long mins = rtc.minute() + tmins % 60;
@@ -1071,8 +1080,7 @@ void getFutureTime(unsigned long tms, char *charBuf) {
   if (hours > 24) {
     hours -= 24;
   }
-  sprintf(charBuf, "%02d", hours);
-  sprintf(charBuf + 2, "%02d", mins);
+  snprintf(charBuf, len, "%02d%02d  ", hours, mins);
 }
 
 void getHoursMins(unsigned long tmins, char *charBuf) {
@@ -1112,21 +1120,21 @@ String getTempStr(int16_t temp) {
   return tempStr;
 }
 
-int getTimeStr(char *ptr) {
+int getTimeStr(char *ptr, int len) {
   // int dayofweek = 1;
   // int h = 12;
   // int m = 13;
   // int s = 31;
   // return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[dayofweek - 1], h, m, s );
-  return sprintf(ptr, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
+  return snprintf(ptr, len, "%s %02d:%02d:%02d", dayNames[rtc.dayOfWeek() - 1],rtc.hour(), rtc.minute(), rtc.second() );
 }
-
-void getDateStr(char *ptr) {
+ 
+int getDateStr(char *ptr, int len) {
   // int d = 24;
   // int m = 6;
   // int y = 2022;
   // return sprintf(ptr, "%02d %s %02d ", d, monNames[m], y);
-  return sprintf(ptr, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
+  return snprintf(ptr, len, "%02d %s %02d ",rtc.day(),monNames[rtc.month()-1],rtc.year());
 }
 
 void switchHeat(boolean on) {
