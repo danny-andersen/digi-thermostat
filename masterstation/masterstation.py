@@ -309,11 +309,11 @@ def getMessage():
         sc.currentSetTemp = therm
         statusChange = True
     heat = args.get("r", type=int)
-    if (heat):
+    if (heat or (heat == 0 and sc.currentBoilerStatus > 0)):
         sc.currentBoilerStatus = heat
         statusChange = True
     pir = args.get("p", type=int)
-    if (pir):
+    if ((pir and not sc.currentPirStatus) or (not pir and sc.currentPirStatus)):
         sc.currentPirStatus = pir
         statusChange = True
     if statusChange:
@@ -503,6 +503,7 @@ def getExtTemp(sc: StationContext = None):
                 print(f"Ext Temp {extMsg.setExt}")
                 str = f.readline()
                 strLen = len(str)
+                if strLen > MAX_WIND_SIZE: strLen = MAX_WIND_SIZE
                 extMsg.windStr = bytes(str[:strLen-1], encoding="utf-8")
                 print(f"Wind str {extMsg.windStr}")
                 msgBytes = getMessageEnvelope(SET_EXT_MSG, bytearray(extMsg), sizeof(SetExt))
@@ -579,6 +580,7 @@ def getHoliday(sc: StationContext = None):
                             holiday.startDate = startDate
                             holiday.endDate = endDate
                             holiday.temp = c_int16(int(float(temp[1]) * 10))
+                            holiday.valid = 1;
                             msgBytes = getMessageEnvelope(SET_HOLIDAY_MSG, bytearray(holiday), sizeof(HolidayStr))
                             response = Response(response=msgBytes, mimetype='application/octet-stream')
                             gotHoliday = True
