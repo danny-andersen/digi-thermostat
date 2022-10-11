@@ -33,9 +33,8 @@
 #define MAX_SCHEDULES 18
 #define HYSTERSIS 2  //10th Degrees over the set temp to drive the current temp to stop output on/off hysteris
 #define DEBOUNCE_TIME 200 //switch must be down for 1000us 
-#define BUTTON_HOLD_TIME 300UL //Time button is held down to increment or decrement
 #define SET_INTERVAL 1 //Amount to increase the temp by, per button press
-#define HOLIDAY_SET_TIME 60000UL //1min to manually set period to go into holiday mode using dial
+#define HOLIDAY_SET_TIME 30000UL //1min to manually set period to go into holiday mode using dial
 #define BACKLIGHT_TIME 30000UL //30s time to leave on once PIR triggered
 
 #define LCD_ROWS 4
@@ -47,7 +46,6 @@
 //Wifi
 
 #define STATION_NUMBER 1
-//char NETWORK_STATUS[] = "WiFi %s";
 char LITERAL_STATUS[] = "%s";
 char SERVER_STATUS[] = "Server %s";
 char MESSAGE_FAIL[] = "Msg %s";

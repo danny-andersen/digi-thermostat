@@ -67,7 +67,7 @@ unsigned long lastMessageCheck = 0;
 unsigned long lastRTCTime = 0UL;
 //unsigned long networkDownTime = 0;
 
-char* dayNames[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 char* monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
 
 //Rotary encoder
@@ -77,13 +77,13 @@ unsigned long lastTriggerTimeA = 0;
 unsigned long lastTriggerTimeB = 0;
 
 Bounce holidayButton = Bounce();
-unsigned long holidaySetTimer = 0;
-unsigned long holidayTime = 0;
+long holidaySetTimer = 0;
+long holidayTime = 0;
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
 int16_t extTemp = 1000; //This will be set by remote command
-char motd[MAX_MOTD_SIZE]; //Will be set by remote command
+char motd[MAX_MOTD_SIZE+1]; //Will be set by remote command
 char windStr[MAX_WIND_SIZE]; //Will be set by remote command
 char defaultMotd[] = "V:" __DATE__ " S:"; //Show build date and number of schedules
 char lcdBuff[LCD_COLS + 1]; //Buffer used to display and scroll motd on LCD
@@ -749,12 +749,12 @@ void displayState() {
     //Show hoiday or next sched start
     if (onHoliday && holidayTime == 0) {
       //On scheduled holiday
-      strncat(runTimeStr, "On hols!!!", 10);
+      strncat(runTimeStr, "On hols!!!", 11);
     } else if (holidayTime > 0) {
       //Currently off due to instant away time set - show when on
       char on[5];
       getFutureTime(holidayTime, &on[0], 5);
-      snprintf(&runTimeStr[0], 13, "ON @ %s  ", &on[0]);
+      snprintf(&runTimeStr[0], 11, "ON @ %s ", &on[0]);
       // strncat(&runTimeStr[9], sp, 1);
     } else { 
       //Show next schedule temp and time
@@ -777,7 +777,7 @@ void displayState() {
   snprintf(&lcdBuff[0], LCD_COLS+1, "%s Set:%sC", runTimeStr, tempStr);
   //    lcdBuff[LCD_COLS] = '\0';
   // Serial.println(lcdBuff);
-  delay(100);
+  // delay(100);
   lcd.print(lcdBuff);
   // lcd.print(String(runTimeStr) + " Set:" + tempStr);
 
@@ -788,7 +788,7 @@ void displayState() {
   if (wlen != 0 && boilerRunTime != 0) {
     if (rtc.second() % 2) {
       //display wind speed
-      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, "%s", windStr);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
     } else {
       //Boiler is on - display how long for on row 2
       getMinSec(boilerRunTime, &run[6]);
@@ -799,7 +799,7 @@ void displayState() {
     }
   } else if (wlen != 0) {
       //display wind speed
-      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, "%s", windStr);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
   } else if (boilerRunTime != 0) {
       getMinSec(boilerRunTime, &run[6]);
       len = snprintf(lcdBuff, 12, "%s", run);
@@ -808,12 +808,22 @@ void displayState() {
     char on[] = "ON  ";
     char off[] = "OFF ";
     if (heatOn) {
-      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, bs, on);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, on);
     } else {
-      len = snprintf(lcdBuff, MAX_WIND_SIZE+1, bs, off);
+      len = snprintf(lcdBuff, MAX_WIND_SIZE, bs, off);
     }
   }
+  //Pad with spaces
   lcdBuff[len] = '\0';
+  uint8_t iLen = MAX_WIND_SIZE - 1;
+  if (extTemp < 0) {
+    iLen--;
+  }
+  while (strlen(lcdBuff) < iLen) {
+    lcdBuff[len] = ' ';
+    len++;
+    lcdBuff[len] = '\0';
+  }
   // int i;
   // i = strlen(boilerStatStr);
   // while (strlen(lcdBuff) < MAX_WIND_SIZE - 1) {
@@ -823,19 +833,16 @@ void displayState() {
   // }
   String extTempStr = getTempStr(extTemp);
   extTempStr.toCharArray(tempStr, TEMP_SIZE);
-  if (extTemp >= 0) {
-    sprintf(&lcdBuff[len - 1], " Ext:%sC", tempStr);
-  } else {
-    sprintf(&lcdBuff[len - 1], " Ext:%s", tempStr);
-  }
+  sprintf(&lcdBuff[len], "Ext:%sC", tempStr);
+
   // Serial.println(lcdBuff);
-  delay(100);
+  // delay(100);
   lcd.print(lcdBuff);
   // lcd.print(String(boilerStatStr) + " Ext:" + extTempStr);
   if (strlen(motd) <= LCD_COLS) {
     lcd.setCursor(0, 3);
     // Serial.println(motd);
-    delay(100);
+    // delay(100);
     lcd.print(motd); //Only print here if motd fits, otherwise needs to scroll
   }
 }
@@ -1069,10 +1076,12 @@ unsigned long calcRunTime(int16_t tempNow, int16_t tempSet, int16_t tempExt) {
 }
 
 //Calculate a time in the future using current time + delta in ms
-void getFutureTime(unsigned long tms, char *charBuf, uint8_t len) {
-  unsigned long tmins = tms / 60000;   
-  unsigned long hours = rtc.hour() + (tmins / 60);
-  unsigned long mins = rtc.minute() + tmins % 60;
+void getFutureTime(long tms, char *charBuf, uint8_t len) {
+  uint8_t tmins = (uint8_t)(tms / 60000UL);
+  uint8_t thours = (uint8_t)(tmins / 60);
+  tmins -= (thours * 60);
+  uint8_t hours = rtc.hour() + thours;
+  uint8_t mins = rtc.minute() + tmins;
   if (mins > 60) {
     hours++;
     mins -= 60;    
@@ -1218,7 +1227,7 @@ uint8_t sendMessage(char msg[]) {
         setTempMotd(SERVER_STATUS, "Now Up");
       }
     } else if (msgLen == 0 ) {
-      setTempMotd(LITERAL_STATUS, (char *)buff);
+      setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
       rxInFail = true;
       break;
     }
