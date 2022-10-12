@@ -22,11 +22,9 @@
 #define MESSAGE_CHECK_INTERVAL 10000UL //10 secs
 //#define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
 #define SCROLL_PAUSE 1200UL //Pause at screen roll
-#define RX_TEMP_INTERVAL 600000UL //msecs, 10 min timeout of temp from masterstation 
-
+#define RX_TEMP_INTERVAL 300000UL //msecs, 5 min timeout of temp from masterstation 
 #define GET_TIME_INTERVAL 300000UL //Get time from masterstation every 5 mins
-
-#define TEMP_MOTD_TIME 20000UL //Time to show status msg - 10 secs
+#define TEMP_MOTD_TIME 20000UL //Time to show status msg - 20 secs
 
 #define ANALOGUE_HIGH 600
 //Schedule and Temp settings

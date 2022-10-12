@@ -236,7 +236,7 @@ void loop() {
   }
 
   //Read thermometer if not got remote reading
-  if (currentMillis - lastThermTempTime > RX_TEMP_INTERVAL && currentSentThermTemp != 100) {
+  if (currentMillis - lastThermTempTime > RX_TEMP_INTERVAL) {
     if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL) {
       temp_sensor.requestTemperatures(); // Send the command to get temperatures
       currentTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
@@ -404,7 +404,7 @@ void intHandlerRotaryA() {
     //Only inc state on rising edge of A and B is off (CW rotation)
     if (rotaryA && !rotaryB) {
       if (holidaySetTimer > 0) {
-        holidayTime += 30 * 60000; //Add 30mins to holiday time
+        holidayTime += 15 * 60000; //Add 30mins to holiday time
       } else {
         currentSetTemp = currentSetTemp + SET_INTERVAL;
       }
@@ -421,7 +421,7 @@ void intHandlerRotaryB() {
     //Only inc state on rising edge of B and A is off (CCW rotation)
     if (rotaryB && !rotaryA) {
       if (holidaySetTimer > 0) {
-        holidayTime -= 30 * 60000; //Take 30mins off holiday time
+        holidayTime -= 15 * 60000; //Take 30mins off holiday time
         if (holidayTime < 0) holidayTime = 0;
       } else {
         currentSetTemp = currentSetTemp - SET_INTERVAL;
@@ -596,13 +596,13 @@ void setThermTemp() {
   currentSentThermTemp = tp->temp;
   lastThermTempTime = currentMillis;
   boilerRunTime = getRunTime();
-  changedState = 2;
+  // changedState = 2;
 }
 
 void setSetTemp() {
   Temp *tp = (Temp *)&buff[4]; //Start of content
   currentSetTemp = tp->temp;
-  changedState = 2;
+  // changedState = 2;
 }
 
 void setExtTemp() {
@@ -610,7 +610,7 @@ void setExtTemp() {
   extTemp = tp->temp;
   windStr[0] = '\0';
   strncat(&windStr[0], tp->windStr, MAX_WIND_SIZE);
-  changedState = 2;
+  // changedState = 2;
 }
 
 void setDateTime() {
