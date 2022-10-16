@@ -784,16 +784,16 @@ void displayState() {
   lcd.setCursor(0, 2);
   uint8_t len = 0;
   uint8_t wlen = strlen(windStr);
-  char run[] = "Run : MM:SS ";
+  char run[] = "Run: MM:SS ";
   if (wlen != 0 && boilerRunTime != 0) {
     if (rtc.second() % 2) {
       //display wind speed
       len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
     } else {
       //Boiler is on - display how long for on row 2
-      getMinSec(boilerRunTime, &run[6]);
+      getMinSec(boilerRunTime, &run[5]);
       // strncat(runTimeStr, &run[0], strlen(run));
-      len = snprintf(lcdBuff, 12, "%s", run);
+      len = snprintf(lcdBuff, 11, "%s", run);
       // strncat(&runTimeStr[8], sp, 1);
       //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
     }
@@ -801,8 +801,8 @@ void displayState() {
       //display wind speed
       len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
   } else if (boilerRunTime != 0) {
-      getMinSec(boilerRunTime, &run[6]);
-      len = snprintf(lcdBuff, 12, "%s", run);
+      getMinSec(boilerRunTime, &run[5]);
+      len = snprintf(lcdBuff, 11, "%s", run);
   } else {
     char bs[] = "Heat : %s";
     char on[] = "ON  ";
