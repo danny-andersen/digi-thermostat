@@ -978,13 +978,13 @@ void getSetPoint(SchedUnion *schedule, uint16_t mins, int currDay, bool nextSche
         nextMins = sched.elem.start;
         memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
-      if (sched.elem.day == 0x200 && (currDay == 7 || currDay == 1) && priority <= 2) {
+      if (sched.elem.day == 0x200 && (currDay == 6 || currDay == 7) && priority <= 2) {
         //Its the weekend and not found higher
         priority = 2;
         nextMins = sched.elem.start;
         memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
-      if (sched.elem.day == 0x100 && (currDay >= 2 || currDay <= 6) && priority <= 2) {
+      if (sched.elem.day == 0x100 && (currDay >= 1 || currDay <= 5) && priority <= 2) {
         //Its a weekday and not found higher
         priority = 2;
         nextMins = sched.elem.start;

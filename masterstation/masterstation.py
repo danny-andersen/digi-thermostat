@@ -619,19 +619,19 @@ def createScheduleMsgs(sc: StationContext):
                     elif ("Sat-Sun" in sched[0]):
                         schedMsg.day = 0x0200
                     elif ("Sun" in sched[0]):
-                        schedMsg.day = 0x0001
-                    elif ("Mon" in sched[0]):
-                        schedMsg.day = 0x0002
-                    elif ("Tue" in sched[0]):
-                        schedMsg.day = 0x0003
-                    elif ("Wed" in sched[0]):
-                        schedMsg.day = 0x0004
-                    elif ("Thu" in sched[0]):
-                        schedMsg.day = 0x0005
-                    elif ("Fri" in sched[0]):
-                        schedMsg.day = 0x0006
-                    elif ("Sat" in sched[0]):
                         schedMsg.day = 0x0007
+                    elif ("Mon" in sched[0]):
+                        schedMsg.day = 0x0001
+                    elif ("Tue" in sched[0]):
+                        schedMsg.day = 0x0002
+                    elif ("Wed" in sched[0]):
+                        schedMsg.day = 0x0003
+                    elif ("Thu" in sched[0]):
+                        schedMsg.day = 0x0004
+                    elif ("Fri" in sched[0]):
+                        schedMsg.day = 0x0005
+                    elif ("Sat" in sched[0]):
+                        schedMsg.day = 0x0006
                     else:
                         print(f"Unidentified Day specified in schedule: {str}")
                     if (schedMsg.day != 0xFF):
