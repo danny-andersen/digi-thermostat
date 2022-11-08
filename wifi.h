@@ -30,6 +30,6 @@ char OK[] = "OK";
 char CONNECTED[] =  "CONNECTED";
 char ERROR_RESP[] = "ERROR";
 char NO_AP[] = "No AP";
-char NO_IP[] = "No ip";
+char NO_IP[] = "No IP";
 //char NOT_VALID[] = "not valid";
 char CONTENT_LENGTH[] = "-Length: ";

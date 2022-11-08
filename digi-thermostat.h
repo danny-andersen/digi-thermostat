@@ -74,7 +74,7 @@ char extTempStr[] = "exttemp";
 char motdStr[] = "motd";
 char holidayStr[] = "holiday";
 
-unsigned long networkDownTime = 0;
+#define NETWORK_DOWN_LIMIT 15 * 60 * 1000  //15 mins for Network to come up otherwise reboot thermostat 
 bool networkUp = false;
 bool rxInFail = false;
 

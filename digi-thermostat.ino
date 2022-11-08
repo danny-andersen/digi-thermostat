@@ -45,9 +45,13 @@ boolean isDefaultSchedule = false;
 SchedUnion defaultSchedule;
 SchedUnion currentSched;
 SchedUnion nextSched;
+
 HolidayUnion holiday;
 boolean onHoliday = false;
-boolean heatOn = false;
+Bounce holidayButton = Bounce();
+long holidaySetTimer = 0;
+long holidayTime = 0;
+
 int16_t degPerHour = 50; //Default heating power - 5C per hour increase
 int16_t extAdjustment = 50; //Weighting of difference between external and internal temp, e.g. if 10 deg diff (100/50) = -2deg
 
@@ -56,6 +60,8 @@ unsigned long lastRTCRead = 0;
 unsigned long lastTempRead = 0;
 unsigned long lastGetSched = 0;
 unsigned long boilerRunTime = 0;
+boolean heatOn = false;
+
 unsigned long lastLoopTime = 0;
 unsigned long lastScrollTime = 0;
 unsigned long loopDelta = 0;
@@ -65,7 +71,7 @@ unsigned long motdExpiryTimer = 0;
 unsigned long lastThermTempTime = 0; //Time at which rx last thermometer temp
 unsigned long lastMessageCheck = 0;
 unsigned long lastRTCTime = 0UL;
-//unsigned long networkDownTime = 0;
+unsigned long networkDownTime = 0; //Time at which the network went down
 
 char* dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 char* monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -75,10 +81,6 @@ byte rotaryA = 0;
 byte rotaryB = 0;
 unsigned long lastTriggerTimeA = 0;
 unsigned long lastTriggerTimeB = 0;
-
-Bounce holidayButton = Bounce();
-long holidaySetTimer = 0;
-long holidayTime = 0;
 
 byte schedules[MAX_SCHEDULES][sizeof(SchedByElem)];
 
@@ -95,6 +97,8 @@ uint8_t changedState = 0;  //Whether a state change has happened that should be 
 //bool msgFail = true;
 bool resendMessages = true;
 
+void(* resetFunc) (void) = 0;  // declare reset fuction at address 0
+
 void setup() {
   // Serial.begin(9600);
   //  printf_begin();
@@ -106,8 +110,8 @@ void setup() {
   lastScrollTime = currentMillis;
   backLightTimer = BACKLIGHT_TIME;
   motdExpiryTimer = TEMP_MOTD_TIME + RECONNECT_WAIT_TIME; //Show the default message for temp period then request the latest motd
-  lastThermTempTime = currentMillis; //Time at which rx last thermometer temp
-  lastMessageCheck = currentMillis;
+  lastThermTempTime = 0; //Time at which rx last thermometer temp
+  lastMessageCheck = 0;
   lastRTCTime = currentMillis;
   //Digi outs
   pinMode(GREEN_LED, OUTPUT);
@@ -194,7 +198,9 @@ void setup() {
   while (!wifiSerial);
 
   delay(RECONNECT_WAIT_TIME); //Give time for wifi to connect to AP
+  networkUp = true; //Assume network is up unless shown otherwise
   //Turn power led RED to indicate running
+
   digitalWrite(GREEN_LED, LOW);
 
 }
@@ -257,12 +263,8 @@ void loop() {
     //Check if on hols
     onHoliday = checkOnHoliday();
     if (onHoliday) {
-      if (lastScheduledTemp != holiday.elem.temp) {
         //Override set temp with holiday temp. Note that this can be overriden manually
         currentSetTemp = holiday.elem.temp;
-        lastScheduledTemp = holiday.elem.temp;
-        changedState = 1;
-      }
     } else {
       uint16_t mins = rtc.hour() * 60 + rtc.minute();
       //Get current schedule
@@ -368,16 +370,27 @@ void loop() {
     uint8_t stat = checkNetworkUp(false);
     if (stat == 0) {
       networkUp = true;
-    }
-    if (stat == 1) {
-      //Got full status report
-      //        debugSerial.print("Network back up. New motd:");
-      snprintf(motd, MAX_MOTD_SIZE, (char *)buff);
-      //        debugSerial.println(motd);
-    } else if (stat == 2) {
-      //        debugSerial.print("Network down. New motd:");
-      snprintf(motd, MAX_MOTD_SIZE, (char *)"No response from wifi card");
-      //        debugSerial.println(motd);
+    } else {
+      lastMessageCheck = currentMillis;
+      if (networkDownTime - currentMillis > NETWORK_DOWN_LIMIT) {
+        //Reset the thermostat to reset the wifi card
+        resetFunc();
+      }
+      if (stat == 1) {
+        //Got full status report
+        //        debugSerial.print("Network still down. New motd:");
+        // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)buff);
+        strncat(&motd[0], (char *)buff, MAX_MOTD_SIZE);
+
+        //        debugSerial.println(motd);
+      } else if (stat == 2) {
+        //        debugSerial.print("Network down. New motd:");
+        // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)"No response from wifi card");
+        strncat(&motd[0], (char *)"No response from wifi card", MAX_MOTD_SIZE);
+        //        debugSerial.println(motd);
+      }
+      scrollPos = 0;
+      changedState = 2;
     }
   }
 
@@ -458,6 +471,7 @@ void setTempMotd(char templateStr[], char param[]) {
   snprintf(motd, MAX_MOTD_SIZE, templateStr, param);
   motdExpiryTimer = TEMP_MOTD_TIME;
   scrollPos = 0;
+  changedState = 2;
 }
 
 void zeroSendBuffer() {
@@ -536,6 +550,12 @@ bool getMotd() {
 bool processMessage(uint8_t msgId) {
   bool msgRx = true;
   switch (msgId) {
+    case -1:
+      if (networkUp) {
+        networkUp = false;
+        networkDownTime = currentMillis;
+      }
+      break;
     case 0:
       //No message
       lastMessageCheck = currentMillis;
@@ -1007,49 +1027,47 @@ boolean checkOnHoliday() {
     afterStart = true;
     beforeEnd = true;
     holiday.elem.temp = 100;
-  } else {
+  } else if (holiday.elem.valid == 1) {
     HolidayDateStr *hols;
-    if (holiday.elem.valid == 1) {
-      hols = &(holiday.elem.startDate);
-      if (rtc.year() > hols->year) {
+    hols = &(holiday.elem.startDate);
+    if (rtc.year() > hols->year) {
+      afterStart = true;
+    } else if (rtc.year() == hols->year) {
+      if (rtc.month() > hols->month) {
         afterStart = true;
-      } else if (rtc.year() == hols->year) {
-        if (rtc.month() > hols->month) {
+      } else if (rtc.month() == hols->month) {
+        if (rtc.day() > hols->dayOfMonth) {
           afterStart = true;
-        } else if (rtc.month() == hols->month) {
-          if (rtc.day() > hols->dayOfMonth) {
+        } else if (rtc.day() == hols->dayOfMonth) {
+          if (rtc.hour() >= hols->hour) {
             afterStart = true;
-          } else if (rtc.day() == hols->dayOfMonth) {
-            if (rtc.hour() >= hols->hour) {
-              afterStart = true;
-            }
           }
         }
       }
-      hols = &(holiday.elem.endDate);
-      if (rtc.year() < hols->year) {
+    }
+    hols = &(holiday.elem.endDate);
+    if (rtc.year() < hols->year) {
+      beforeEnd = true;
+    } else if (rtc.year() == hols->year) {
+      if (rtc.month() < hols->month) {
         beforeEnd = true;
-      } else if (rtc.year() == hols->year) {
-        if (rtc.month() < hols->month) {
+      } else if (rtc.month() == hols->month) {
+        if (rtc.day() < hols->dayOfMonth) {
           beforeEnd = true;
-        } else if (rtc.month() == hols->month) {
-          if (rtc.day() < hols->dayOfMonth) {
+        } else if (rtc.day() == hols->dayOfMonth) {
+          if (rtc.hour() < hols->hour) {
             beforeEnd = true;
-          } else if (rtc.day() == hols->dayOfMonth) {
-            if (rtc.hour() < hols->hour) {
-              beforeEnd = true;
-            }
           }
         }
       }
-      //    Serial.println("after start:" + String(afterStart) + " before end:" + String(beforeEnd));
-      if (!beforeEnd) {
-        //Holiday is over - remove it
-        holiday.elem.valid = 0;
-        int cnt;
-        cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
-        eepromWrite(cnt, 0); //Set holiday as invalid
-      }
+    }
+    //    Serial.println("after start:" + String(afterStart) + " before end:" + String(beforeEnd));
+    if (!beforeEnd) {
+      //Holiday is over - remove it
+      holiday.elem.valid = 0;
+      int cnt;
+      cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+      eepromWrite(cnt, 0); //Set holiday as invalid
     }
   }
   return (afterStart && beforeEnd);
@@ -1345,7 +1363,8 @@ int16_t waitForGetResponse() {
     //    debugSerial.print(" Got:");
     //    debugSerial.print(bufPos);
     //    printBuff(bufPos);
-    snprintf(motd, MAX_MOTD_SIZE, "Msg Timeout Rx %d of %d", bufPos, msgLen);
+    snprintf(&motd[0], MAX_MOTD_SIZE, "Msg Timeout Rx %d of %d", bufPos, msgLen);
+
     // Serial.println(motd);
     motdExpiryTimer = TEMP_MOTD_TIME;
     scrollPos = 0;
