@@ -105,7 +105,7 @@ void setup() {
   //  while (!Serial);
   currentMillis = millis();
   lastRTCRead = currentMillis;
-  lastTempRead = currentMillis;
+  lastTempRead = 0;
   lastGetSched = currentMillis;
   lastScrollTime = currentMillis;
   backLightTimer = BACKLIGHT_TIME;
@@ -308,6 +308,14 @@ void loop() {
     changedState = 2;
   }
 
+  //Check for any messages
+  if (currentMillis - lastMessageCheck > MESSAGE_CHECK_INTERVAL) {
+    if (networkUp) {
+      getNextMessage();
+      drainSerial();
+    }
+  }
+
   //Check if motd has expired
   if (motdExpiryTimer > 0) {
     if (motdExpiryTimer >= loopDelta) {
@@ -320,7 +328,7 @@ void loop() {
     //Forecast has expired, as has external temp and wind
     //Request new ones
     bool result = false;
-    if (networkUp) {
+    if (networkUp && !rxInFail) {
       if (getMotd()) {
         result = true;
       }
@@ -330,7 +338,7 @@ void loop() {
       setDefaultMotd();
     }
     result = false;
-    if (networkUp) {
+    if (networkUp && !rxInFail) {
       if (getExtTemp()) {
         result = true;
       }
@@ -348,19 +356,10 @@ void loop() {
     lcd.noBacklight();
   }
 
-
-  //Check for any messages
-  if (currentMillis - lastMessageCheck > MESSAGE_CHECK_INTERVAL) {
-    if (networkUp) {
-      getNextMessage();
-      drainSerial();
-    }
-  }
-
   //Check if need time update
   if ((currentMillis - lastRTCTime) > GET_TIME_INTERVAL) {
     //    Serial.println("Get datetime");
-    if (networkUp) {
+    if (networkUp && !rxInFail) {
       getDateTime();
       drainSerial();
     }
@@ -1247,6 +1246,7 @@ uint8_t sendMessage(char msg[]) {
     } else if (msgLen == 0 ) {
       setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
       rxInFail = true;
+      lastMessageCheck = currentMillis; //reset message check timer
       break;
     }
     retries++;
