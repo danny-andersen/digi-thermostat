@@ -41,7 +41,7 @@ STATION_FILE = "-context.json"
 EXT_TEMP_EXPIRY_SECS = 3600 # an hour
 SET_TEMP_EXPIRY_SECS = 30*60 # 30 mins
 SET_SCHED_EXPIRY_SECS = 30*60 # 30 mins
-TEMP_MOTD_EXPIRY_SECS = 60 * 1000 # 1 min
+TEMP_MOTD_EXPIRY_SECS = 60 # 1 min
 
 class Status(Structure):
       _fields_ = [("currentTemp", c_short),
@@ -318,6 +318,7 @@ def getMessage():
         statusChange = True
     if statusChange:
         generateStatusFile(sc)
+    if sc.motdExpiry < TEMP_MOTD_EXPIRY_SECS: sc.motdExpiry = TEMP_MOTD_EXPIRY_SECS #Have a minimum expiry time
 
     checkAndDeleteFile(MOTD_FILE, sc.motdExpiry)
     checkAndDeleteFile(SET_TEMP_FILE, SET_TEMP_EXPIRY_SECS)
@@ -399,7 +400,8 @@ def getMotd(sc: StationContext = None):
         with open(MOTD_FILE, "r", encoding="utf-8") as f:
             str = f.readline()
             exp = int(f.readline())
-            sc.motdExpiry = MOTD_EXPIRY_SECS if exp == '' else int(exp/1000)-30 #Expire before the thermostat does
+            sc.motdExpiry = MOTD_EXPIRY_SECS if exp == '' else exp-10000 #Expire 10s before the thermostat does
+            if sc.motdExpiry < TEMP_MOTD_EXPIRY_SECS: sc.motdExpiry = TEMP_MOTD_EXPIRY_SECS #Have a minimum expiry time of 60 seconds
             sc.motdTime = stat(MOTD_FILE).st_mtime
             sc.tempMotdTime = 0
             str = str[:len(str)-1]
@@ -414,9 +416,9 @@ def getMotd(sc: StationContext = None):
 
 def getDefaultMotd():
     str = "No weather forecast, please wait....."
-    return createMotd(str, TEMP_MOTD_EXPIRY_SECS)
+    return createMotd(str, TEMP_MOTD_EXPIRY_SECS*1000)
 
-def createMotd(str, motdExpiry = TEMP_MOTD_EXPIRY_SECS):
+def createMotd(str, motdExpiry = TEMP_MOTD_EXPIRY_SECS*1000):
     strLen = len(str) if len(str) < MAX_MOTD_SIZE-1 else MAX_MOTD_SIZE-1
     motdStr = bytes(str[:strLen], encoding="utf-8")
     motdLen = len(motdStr)+1
