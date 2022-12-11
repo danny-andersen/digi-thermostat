@@ -86,17 +86,21 @@ then
     echo "Running command:" $contents
     if [ $contents = "temp" ];
     then
-	if [ -f ${sensor_dir}/temperature ]
-	then
-    	    #temp=$(grep "t=" $sensor_dir/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
-	    temp=$(cat ${sensor_dir}/temperature)
-	    temp=$(echo "scale=2; $temp / 1000" | bc -l)
-	    upload_temp
-	fi
+        if [ -f ${sensor_dir}/temperature ]
+        then
+                #temp=$(grep "t=" $sensor_dir/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
+            temp=$(cat ${sensor_dir}/temperature)
+            temp=$(echo "scale=2; $temp / 1000" | bc -l)
+            upload_temp
+        fi
     fi
     if [ $contents = "photo" ];
     then
-	upload_image
+    	upload_image
+    fi
+    if [ $contents = "reset" ];
+    then
+    	touch $masterstation/resetReq.txt
     fi
     ./dropbox_uploader.sh delete command.txt
     rm command.txt
