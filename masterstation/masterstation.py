@@ -374,7 +374,7 @@ def getMessage():
         response = getNextScheduleMsg(sc)
         print(f"Number of schedules remaining to send: {len(sc.scheduleMsgs)}")
     elif path.exists(RESET_FILE):
-        response = createResetMsg(sc)
+        response = createResetMsg()
     elif path.exists(SET_TEMP_FILE) and stat(SET_TEMP_FILE).st_mtime > sc.setTempTime:
         response = getSetTemp(sc)
     elif path.exists(HOLIDAY_FILE) and stat(HOLIDAY_FILE).st_mtime > sc.setHolidayTime:

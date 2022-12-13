@@ -139,15 +139,10 @@ void setup()
   digitalWrite(RED_LED, HIGH);
   digitalWrite(GREEN_LED, HIGH);
 
-  temp_sensor.begin();
-  temp_sensor.requestTemperatures(); // Send the command to get temperatures
-  int16_t readTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
-  if (readTemp > 10 && readTemp < 500):
-    //Temp looks sensible, use it
-    currentTemp = readTemp
-
-
   Wire.begin();
+
+  temp_sensor.begin();
+  readLocalTemp();
 
   //  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
   //  rtc.set(0,45, 15, 5, 3, 2, 17);
@@ -265,13 +260,7 @@ void loop()
   {
     if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL)
     {
-      temp_sensor.requestTemperatures(); // Send the command to get temperatures
-      int16_t readTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
-      if (readTemp > 10 && readTemp < 500)
-      {
-        // Temp looks sensible, use it
-        currentTemp = readTemp;
-      }
+      readLocalTemp();
       //  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
       lastTempRead = currentMillis;
       changedState = 1;
@@ -293,8 +282,9 @@ void loop()
     onHoliday = checkOnHoliday();
     if (onHoliday)
     {
-      // Override set temp with holiday temp. Note that this can be overriden manually
+      // Override set temp with holiday temp.
       currentSetTemp = holiday.elem.temp;
+      lastScheduledTemp = holiday.elem.temp; // Force new currentSetTemp when holiday over
     }
     else
     {
@@ -485,7 +475,15 @@ void intHandlerRotaryA()
     {
       if (holidaySetTimer > 0)
       {
-        holidayTime += 15 * 60000; // Add 30mins to holiday time
+        if (holidayTime > 0)
+        {
+          holidayTime += 15 * 60000; // Add 15mins to holiday time
+        }
+        else
+        {
+          uint8_t mins = 15 * (1 +(rtc.minute() / 15)); // Get mins to next 15 min boundary
+          holidayTime = mins * 60000;       // Assign to min start time
+        }
       }
       else
       {
@@ -508,7 +506,7 @@ void intHandlerRotaryB()
     {
       if (holidaySetTimer > 0)
       {
-        holidayTime -= 15 * 60000; // Take 30mins off holiday time
+        holidayTime -= 15 * 60000; // Take 15mins off holiday time
         if (holidayTime < 0)
           holidayTime = 0;
       }
@@ -528,6 +526,8 @@ void readInputs(void)
     if (holidaySetTimer == 0)
     {
       holidaySetTimer = HOLIDAY_SET_TIME;
+      uint8_t mins = 15 * (1 +(rtc.minute() / 15)); // Get mins to next 15 min boundary
+      holidayTime = mins * 60000;       // Assign to min start time to start on 15min boundary
     }
     else
     {
@@ -535,6 +535,16 @@ void readInputs(void)
       holidaySetTimer = 0;
     }
     changedState = 2;
+  }
+}
+
+void readLocalTemp(){
+  temp_sensor.requestTemperatures(); // Send the command to get temperatures
+  int16_t readTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
+  if (readTemp > 10 && readTemp < 600)
+  {
+    // Temp looks sensible, use it (i.e. between 1 and 60 C)
+    currentTemp = readTemp - LOCAL_TEMP_ADJUST; //Adjust for local temp reading compared to masterstation
   }
 }
 
@@ -975,10 +985,6 @@ void displayState()
   // Pad with spaces
   lcdBuff[len] = '\0';
   uint8_t iLen = MAX_WIND_SIZE - 1;
-  if (extTemp < 0)
-  {
-    iLen--;
-  }
   while (strlen(lcdBuff) < iLen)
   {
     lcdBuff[len] = ' ';
@@ -1356,13 +1362,23 @@ String getTempStr(int16_t temp)
   {
     tempStr = " 0.0";
   }
-  else
+  else if (temp > -100) // For temps more than -10 get "-1.0C" over 10 get "10.0C"
   {
     tempStr = String((float)(temp / 10.0), 1); // Only way to generate a float str in Arduino
   }
-  if (temp < 100 && temp > 0)
+  else // For neg temps less than -10, drop the decimal place and pad with a space (" -10C")
+  {
+    tempStr = String((float)(temp / 10.0), 0); // Only way to generate a float str in Arduino
+    tempStr = " " + tempStr;
+  }
+
+  if (temp < 100 && temp >= 10) // Add a leading 0 for temps between 1 and 10: "01.0C"
   {
     tempStr = "0" + tempStr;
+  }
+  else if (temp > 0 && temp < 10) // Need to pad with a space if temp between 0 and 1: " 0.5C"
+  {
+    tempStr = " " + tempStr;
   }
   return tempStr;
 }

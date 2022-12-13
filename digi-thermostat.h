@@ -18,6 +18,7 @@
 #define LOOP_DELAY 50
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL // 15 secs
+#define LOCAL_TEMP_ADJUST 40 //Local thermister reads 4C over - so reduce reading 
 #define SCHED_CHECK_INTERVAL 1000UL
 #define MESSAGE_CHECK_INTERVAL 10000UL // 10 secs
 // #define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
