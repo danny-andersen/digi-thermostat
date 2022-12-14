@@ -293,7 +293,7 @@ def generateStatusFile(sc: StationContext):
             f.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
             heatOn = "No" if sc.currentBoilerStatus == 0 else "Yes"
             f.write(f"Heat on? {heatOn}\n")
-            f.write(f"Mins to set temp: {sc.currentBoilerStatus/60}\n")
+            f.write(f"Mins to set temp: {sc.currentBoilerStatus}\n")
             if sc.currentExtTemp < 1000:
                 f.write(f"External temp: {sc.currentExtTemp/10:0.2f}\n")
             else:
@@ -468,10 +468,12 @@ def getDefaultMotd():
     str = "No weather forecast, please wait....."
     return createMotd(str, TEMP_MOTD_EXPIRY_SECS * 1000)
 
+
 def createResetMsg():
     remove(RESET_FILE)
     msgBytes = getMessageEnvelope(RESET_MSG, bytearray(0), 0)
     return Response(response=msgBytes, mimetype="application/octet-stream")
+
 
 def createMotd(str, motdExpiry=TEMP_MOTD_EXPIRY_SECS * 1000):
     strLen = len(str) if len(str) < MAX_MOTD_SIZE - 1 else MAX_MOTD_SIZE - 1
