@@ -38,7 +38,8 @@ SoftwareSerial wifiSerial(WIFI_RX, WIFI_TX); // RX, TX
 // Global variables and stuff to initate once
 int16_t currentTemp = 1000;
 int16_t currentSentThermTemp = 1000;
-int16_t lastScheduledTemp = 0;
+int16_t manHolidayTemp = 1000;
+int16_t lastScheduledTemp = 1000;
 volatile int16_t currentSetTemp = 0;
 byte noOfSchedules = 0;
 boolean isDefaultSchedule = false;
@@ -240,9 +241,8 @@ void loop()
     {
       holidaySetTimer = 0;
     }
-  }
-
-  if (holidayTime > 0)
+  } 
+  else if (holidayTime > 0) //Only start count down holiday timer if still not setting time
   {
     // Countdown timer for instant holiday time
     if (holidayTime > loopDelta)
@@ -282,9 +282,16 @@ void loop()
     onHoliday = checkOnHoliday();
     if (onHoliday)
     {
-      // Override set temp with holiday temp.
-      currentSetTemp = holiday.elem.temp;
-      lastScheduledTemp = holiday.elem.temp; // Force new currentSetTemp when holiday over
+      // Override set temp with holiday temp. to prevent any manual local overrides
+      // First check remote override...
+      if (holidayTime > 0)
+      {
+        //In manual holiday mode - allow remote override
+        currentSetTemp = manHolidayTemp;
+
+      } else {
+          currentSetTemp = holiday.elem.temp;
+      }
     }
     else
     {
@@ -473,19 +480,20 @@ void intHandlerRotaryA()
     // Only inc state on rising edge of A and B is off (CW rotation)
     if (rotaryA && !rotaryB)
     {
-      if (holidaySetTimer > 0)
+      if (holidaySetTimer > 0) //Setting holiday time 
       {
         if (holidayTime > 0)
         {
-          holidayTime += 15 * 60000; // Add 15mins to holiday time
+          holidayTime += 15 * 60000; // Add 15 mins to holiday time
         }
         else
         {
-          uint8_t mins = 15 * (1 +(rtc.minute() / 15)); // Get mins to next 15 min boundary
-          holidayTime = mins * 60000;       // Assign to min start time
+          holidayTime = calcHolidayTime(); // Reset to next boudary
         }
+        lastScheduledTemp = holiday.elem.temp; // Force new currentSetTemp when holiday over
+        manHolidayTemp = holiday.elem.temp; //Use this temp during holiday time - allows remote override by overriding this value
       }
-      else
+      else //This is manually increasing the temp
       {
         currentSetTemp = currentSetTemp + SET_INTERVAL;
       }
@@ -504,13 +512,13 @@ void intHandlerRotaryB()
     // Only inc state on rising edge of B and A is off (CCW rotation)
     if (rotaryB && !rotaryA)
     {
-      if (holidaySetTimer > 0)
+      if (holidaySetTimer > 0) //Setting holiday time
       {
         holidayTime -= 15 * 60000; // Take 15mins off holiday time
         if (holidayTime < 0)
           holidayTime = 0;
       }
-      else
+      else //This is manually decreasing the temp
       {
         currentSetTemp = currentSetTemp - SET_INTERVAL;
       }
@@ -526,8 +534,7 @@ void readInputs(void)
     if (holidaySetTimer == 0)
     {
       holidaySetTimer = HOLIDAY_SET_TIME;
-      uint8_t mins = 15 * (1 +(rtc.minute() / 15)); // Get mins to next 15 min boundary
-      holidayTime = mins * 60000;       // Assign to min start time to start on 15min boundary
+      holidayTime = calcHolidayTime();
     }
     else
     {
@@ -538,13 +545,22 @@ void readInputs(void)
   }
 }
 
-void readLocalTemp(){
+long calcHolidayTime()
+{
+  uint8_t currMins = rtc.minute();
+  uint8_t mins = 15 * (1 + (currMins / 15)); // Get  next 15 min boundary
+  mins -= currMins;                          // Mins to next boundary
+  return (mins * 60000);                     // Assign to min start time
+}
+
+void readLocalTemp()
+{
   temp_sensor.requestTemperatures(); // Send the command to get temperatures
   int16_t readTemp = (int16_t)(temp_sensor.getTempCByIndex(0) * 10);
   if (readTemp > 10 && readTemp < 600)
   {
     // Temp looks sensible, use it (i.e. between 1 and 60 C)
-    currentTemp = readTemp - LOCAL_TEMP_ADJUST; //Adjust for local temp reading compared to masterstation
+    currentTemp = readTemp - LOCAL_TEMP_ADJUST; // Adjust for local temp reading compared to masterstation
   }
 }
 
@@ -583,9 +599,10 @@ bool getNextMessage()
     nextMessage[i] == 0;
   }
   // Send current status as params in request
-  // Status message format = /message?s=station&rs=resend init messages&t=<temp>st=<thermostat set temp>  &r=< mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
+  // Status message format = /message?s=station&rs=resend init messages&t=<temp>st=<thermostat set temp>  &r=<mins to set temp, 0 off>&p=<1 sensor triggered, 0 sensor off>
   // GET /message?s=%d&rs=%d&t=%d&st=%d&r=%d&p=%d
-  snprintf(nextMessage, MAX_GET_MSG_SIZE, NEXT_MESSAGE_TEMPLATE, STATION_NUMBER, resendMessages, (int)currentTemp, (int)currentSetTemp, (int)boilerRunTime, pirStatus);
+  int runMins = boilerRunTime / 60000;
+  snprintf(nextMessage, MAX_GET_MSG_SIZE, NEXT_MESSAGE_TEMPLATE, STATION_NUMBER, resendMessages, (int)currentTemp, (int)currentSetTemp, runMins, pirStatus);
   // Count the message len
   int msglen = 0;
   for (int i = 0; i < MAX_GET_MSG_SIZE; i++)
@@ -738,6 +755,7 @@ void setSetTemp()
 {
   Temp *tp = (Temp *)&buff[4]; // Start of content
   currentSetTemp = tp->temp;
+  manHolidayTemp = tp->temp;
   // changedState = 2;
 }
 
@@ -1209,9 +1227,10 @@ boolean checkOnHoliday()
   boolean beforeEnd = false;
   if (holidayTime > 0)
   {
+    //On manual holiday
     afterStart = true;
     beforeEnd = true;
-    holiday.elem.temp = 100;
+    holiday.elem.temp = 100; //Set to default holiday temp of 10C
   }
   else if (holiday.elem.valid == 1)
   {
@@ -1312,12 +1331,12 @@ void getFutureTime(long tms, char *charBuf, uint8_t len)
   tmins -= (thours * 60);
   uint8_t hours = rtc.hour() + thours;
   uint8_t mins = rtc.minute() + tmins;
-  if (mins > 60)
+  if (mins >= 60)
   {
     hours++;
     mins -= 60;
   }
-  if (hours > 24)
+  if (hours >= 24)
   {
     hours -= 24;
   }
