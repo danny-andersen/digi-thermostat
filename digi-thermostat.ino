@@ -1,4 +1,3 @@
-
 #include <Wire.h>
 #include <uRTCLib.h>
 
@@ -6,7 +5,8 @@
 #include <OneWire.h>
 
 // #include <LiquidCrystal.h>
-#include <LiquidCrystal_I2C.h>
+// #include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_PCF8574.h>
 
 // Debounce switches
 #include <Bounce2.h>
@@ -30,7 +30,8 @@ DallasTemperature temp_sensor(&oneWire);
 uRTCLib rtc;
 
 // LCD
-LiquidCrystal_I2C lcd(0x27, 20, 4);
+// LiquidCrystal_I2C lcd(0x27, 20, 4);
+LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 
 
 // WIFI Port
 SoftwareSerial wifiSerial(WIFI_RX, WIFI_TX); // RX, TX
@@ -150,8 +151,12 @@ void setup()
   //  eepromWrite(0,0x00);
 
   // set up the LCD's number of columns and rows:
-  lcd.init();
-  lcd.backlight();
+  // lcd.init();
+  // lcd.backlight();
+  lcd.begin(20,4);
+  lcd.clear();
+  lcd.display();
+  lcd.setBacklight(255);
 
   // Read schedule from EEPROM
   // Note: Max position: 32767
@@ -399,11 +404,19 @@ void loop()
 
   if (checkBackLight())
   {
-    lcd.backlight();
+    // lcd.backlight();
+    lcd.display();
+    lcd.setBacklight(255);
+    pirStatus = 1;
+    // lcd.on();
   }
   else
   {
-    lcd.noBacklight();
+    // lcd.noBacklight();
+    lcd.noDisplay();
+    lcd.setBacklight(0);
+    pirStatus = 0;
+    // lcd.off();
   }
 
   // Check if need time update
@@ -1099,8 +1112,6 @@ boolean checkBackLight()
     else
     {
       backLightTimer = 0;
-      // Force a message check, which flags the PIR status change to the masterstation
-      lastMessageCheck = 0;
     }
   }
   // PIR set to repeat trigger so if output is high then set backLightTimer to BACKLIGHT_TIME
@@ -1113,12 +1124,7 @@ boolean checkBackLight()
       // Force a message check, which flags the PIR status change to the masterstation
       lastMessageCheck = 0;
     }
-    pirStatus = 1;
     backLightTimer = BACKLIGHT_TIME;
-  }
-  else
-  {
-    pirStatus = 0;
   }
   return (backLightTimer > 0);
 }
