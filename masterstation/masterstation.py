@@ -281,24 +281,26 @@ def createThermMsg(temp):
     tempMsg.temp = temp
     msgBytes = getMessageEnvelope(SET_THERM_TEMP_MSG, bytearray(tempMsg), sizeof(Temp))
     response = Response(response=msgBytes, mimetype="application/octet-stream")
-    print(f"Temp: {tempMsg.temp}")
+    # print(f"Temp: {tempMsg.temp}")
     return response
 
 
 def generateStatusFile(sc: StationContext):
     # print("Generate status file")
+    now: datetime = datetime.now()
     try:
-        with open(STATUS_FILE, "w", encoding="utf-8") as f:
-            f.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
-            f.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
+        with open(STATUS_FILE, "w", encoding="utf-8") as statusf:
+            statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
+            statusf.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
             heatOn = "No" if sc.currentBoilerStatus == 0 else "Yes"
-            f.write(f"Heat on? {heatOn}\n")
-            f.write(f"Mins to set temp: {sc.currentBoilerStatus}\n")
+            statusf.write(f"Heat on? {heatOn}\n")
+            statusf.write(f"Mins to set temp: {sc.currentBoilerStatus}\n")
             if sc.currentExtTemp < 1000:
-                f.write(f"External temp: {sc.currentExtTemp/10:0.2f}\n")
+                statusf.write(f"External temp: {sc.currentExtTemp/10:0.2f}\n")
             else:
-                f.write("External temp: Not Set\n")
-            f.write(f"No of Schedules: {sc.noOfSchedules}\n")
+                statusf.write("External temp: Not Set\n")
+            statusf.write(f"No of Schedules: {sc.noOfSchedules}\n")
+            statusf.write(f"Last heard time: {now.strftime('%Y%m%d %H:%M:%S')}\n")
     except:
         print("Failed to write status file")
 
@@ -307,7 +309,6 @@ def generateStatusFile(sc: StationContext):
 @app.route("/message", methods=["GET"])
 def getMessage():
     args = request.args
-    statusChange = False
     stn = args.get("s", type=int)
     if stn:
         sc: StationContext = StationContext(stn)
@@ -330,20 +331,15 @@ def getMessage():
     temp = args.get("t", type=float)
     if temp:
         sc.currentTemp = temp
-        statusChange = True
     therm = args.get("st", type=float)
     if therm:
         sc.currentSetTemp = therm
-        statusChange = True
     heat = args.get("r", type=int)
     if heat or (heat == 0 and sc.currentBoilerStatus > 0):
         sc.currentBoilerStatus = heat
-        statusChange = True
     pir = args.get("p", type=int)
     if (pir and not sc.currentPirStatus) or (not pir and sc.currentPirStatus):
         sc.currentPirStatus = pir
-        statusChange = True
-    if statusChange:
         generateStatusFile(sc)
     if sc.motdExpiry < TEMP_MOTD_EXPIRY_SECS:
         sc.motdExpiry = TEMP_MOTD_EXPIRY_SECS  # Have a minimum expiry time
