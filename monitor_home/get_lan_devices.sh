@@ -1,11 +1,25 @@
 #!/bin/bash
-function upload_image {
-#   sudo fswebcam -r 1280x720 home.jpg
-  ./dropbox_uploader.sh upload home.jpg home.jpg
+function upload_images {
+    if [ $# -gt 0 ]
+    then
+        for file in $*
+        do
+            ./dropbox_uploader.sh upload $file $file
+            rm $file
+        done
+    fi
 }
+
 
 #Start
 cd "$(dirname "$0")"
+
+filename=$(date +%Y%m%d)"_device_change.txt"
+sensor_dir=/sys/bus/w1/devices/28-051673fdeeff
+masterstation=../masterstation
+video_picture_dir=motion_images/
+safeDevice=`cat safeDevices.txt`
+uploadStatus=N
 
 #Check wifi up
 ping -c2 192.168.1.1 > /dev/null
@@ -40,12 +54,6 @@ then
       sudo /sbin/shutdown -r now
 fi
 
-filename=$(date +%Y%m%d)"_device_change.txt"
-sensor_dir=/sys/bus/w1/devices/28-051673fdeeff
-masterstation=../masterstation
-safeDevice=`cat safeDevices.txt`
-uploadStatus=N
-
 > lan_devices.new
 #rm host_list.html
 #wget -O host_list.html 192.168.1.1 
@@ -61,7 +69,7 @@ do
 	fi
 done	
 
-diff -q lan_devices.new lan_devices.txt
+diff -q lan_devices.new lan_devices.txt >/dev/null
 if [ $? -eq 1 ]
 then
     #Find new devices and add to device change file
@@ -80,23 +88,23 @@ then
     done
 	cat tmpdiff >> $filename
     cp lan_devices.new lan_devices.txt
-	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt
+	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt > /dev/null 2>&1
 	uploadStatus=Y
 fi
 
-diff -q ${masterstation}/status.txt thermostat_status.txt
+diff -q ${masterstation}/status.txt thermostat_status.txt >/dev/null
 if [ $? -eq 1 ]
 then
-	echo "Uploading changed thermostat status"
+	# echo "Uploading changed thermostat status"
 	cp ${masterstation}/status.txt thermostat_status.txt
-	./dropbox_uploader.sh upload thermostat_status.txt thermostat_status.txt
+	./dropbox_uploader.sh upload thermostat_status.txt thermostat_status.txt > /dev/null 2>&1
 fi
 
-./dropbox_uploader.sh download command.txt command.txt
+./dropbox_uploader.sh download command.txt command.txt > /dev/null 2>&1
 if [ -f command.txt ]
 then
     contents=$(cat command.txt)
-    echo "Running command:" $contents
+    # echo "Running command:" $contents
     if [ $contents = "temp" ];
     then
         if [ -f ${sensor_dir}/temperature ]
@@ -119,24 +127,24 @@ then
     rm command.txt
 fi
 
-./dropbox_uploader.sh download setTemp.txt setTemp.txt
+./dropbox_uploader.sh download setTemp.txt setTemp.txt > /dev/null 2>&1
 if [ -f setTemp.txt ]
 then
     mv setTemp.txt $masterstation
     ./dropbox_uploader.sh delete setTemp.txt
 fi
 
-./dropbox_uploader.sh download setSchedule.txt setSchedule.txt
+./dropbox_uploader.sh download setSchedule.txt setSchedule.txt > /dev/null 2>&1
 if [ -f setSchedule.txt ]
 then
     mv setSchedule.txt $masterstation/schedule.txt
     ./dropbox_uploader.sh delete setSchedule.txt
 fi
 
-./dropbox_uploader.sh download holiday.txt holiday.txt
+./dropbox_uploader.sh download holiday.txt holiday.txt > /dev/null 2>&1
 if [ -f holiday.txt ]
 then
-    mv holiday.txt $masterstation
+    mv holiday.txt $masterstation/holiday.txt
     ./dropbox_uploader.sh delete holiday.txt
 fi
 	 
@@ -161,30 +169,17 @@ fi
 #     fi
 # fi
 
-#Check pir status
-#pirStat=$(grep "PIR:" thermostat_status.txt | awk -F: '{print $2}')
-
-#Upload any motion video not uploaded and delete file
-files=$(find motion_images/ -name "*.avi" -mmin +0 -size +200k)
-num=$(echo $files | wc -w)
-if [ $num -gt 0 ]
-then
-	for file in $files
-	do
-	    ./dropbox_uploader.sh upload $file $file
-	    rm $file
-	done
-fi
-	    
-#Delete all old jpeg files
-find motion_images/ -name "*.jpg" -mmin +5 -exec rm '{}' ';'
-find motion_images/ -name "*.avi" -mmin +5 -size -200k -exec rm '{}' ';'
+#Upload any video or photo not uploaded and delete file
+files=$(find $video_picture_dir -name "*.mp4" -mmin +0 -size +200k)
+upload_images $files
+files=$(find $video_picture_dir -name "*.jpeg" -mmin +0 -size +200k)
+upload_images $files
 
 #Refresh picture every hour
 mins=$(date +%M)
 if [ $mins -eq 0 ]
 then
-   upload_image
+    touch take-photo.txt
 fi
 
 #Update weather every 30mins
@@ -192,7 +187,7 @@ istime=$((mins % 30))
 if [ $istime -eq 0 ]
 then
    cd ${masterstation}
-   ./getBBCWeather.sh
+   ./getBBCWeather.sh > /dev/null 2>&1
    cd -
 fi
 
@@ -237,6 +232,6 @@ fi
 
 if [ ${uploadStatus} = "Y" ]
 then
-    ./dropbox_uploader.sh upload $filename $filename
+    ./dropbox_uploader.sh upload $filename $filename > /dev/null 2>&1
 fi
 

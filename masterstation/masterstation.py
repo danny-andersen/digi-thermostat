@@ -1,12 +1,20 @@
 import re
 from flask import *
+from uwsgidecorators import *
 from ctypes import *
 from datetime import datetime
 from os import stat, path, remove
 import json
 import copy
+from threading import Thread, Lock
+from time import sleep
+import subprocess
+
 import crcmod
 import crcmod.predefined
+from filelock import FileLock, Timeout
+
+from capture_camera import monitorAndRecord
 
 MAX_MESSAGE_SIZE = 128
 MAX_WIND_SIZE = 12
@@ -233,7 +241,39 @@ class StationContext:
         )
 
 
+MONITOR_SCRIPT = "/home/danny/digi-thermostat/monitor_home/get_lan_devices.sh"
+MONITOR_TIME = 30  # number of seconds between running monitor script
+
+
+def runMonitorScript():
+    print(f"******Starting monitor script thread loop {MONITOR_SCRIPT}")
+    while True:
+        startTime = datetime.now().timestamp()
+        subprocess.run(args=MONITOR_SCRIPT, shell=True)
+        endTime = datetime.now().timestamp()
+        elapsed = endTime - startTime
+        if elapsed < MONITOR_TIME:
+            sleep(MONITOR_TIME - elapsed)
+
+
+lock = FileLock("monitor_thread.lock")
 app = Flask(__name__)
+
+
+@postfork
+def setup():
+    global lock
+    try:
+        if lock.acquire(1):
+            print("Starting monitoring threads")
+            # Only one thread gets the lock
+            cameraThread = Thread(target=monitorAndRecord, daemon=True)
+            cameraThread.start()
+            monitorScriptThread = Thread(target=runMonitorScript, daemon=True)
+            monitorScriptThread.start()
+    except Timeout:
+        print("This thread skipping creating monitoring threads")
+        pass
 
 
 def getNoMessage():
@@ -767,4 +807,5 @@ def checkAndDeleteFile(filename, expiry: int):
 
 
 if __name__ == "__main__":
+    setup()
     app.run(debug=True)

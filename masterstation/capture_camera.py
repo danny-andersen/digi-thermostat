@@ -1,9 +1,9 @@
 from time import sleep
 from fractions import Fraction
-from picamera import PiCamera
 from datetime import datetime
 import subprocess
 import os
+from picamera import PiCamera
 
 WEB_CAM = False
 DATE_FORMAT: str = "%Y%m%dT%H%M%S"
@@ -16,6 +16,7 @@ DEVICES_FILE = "/home/danny/digi-thermostat/monitor_home/lan_devices.txt"
 class Camera:
     _webcam_enabled: bool
     _camera: PiCamera
+    photoVideoDir: str = "/home/danny/digi-thermostat/monitor_home/motion_images/"
     photoFilenamePi: str = "-piphoto.jpeg"
     photoFilenameWeb: str = "-webphoto.jpeg"
     videoFilename: str = "-pioutput"
@@ -44,17 +45,17 @@ class Camera:
         # Take photo with picam
         camera = self._getCamera()
         camera.resolution = (1024, 768)
-        camera.capture(f"{dateStr}{self.photoFilenamePi}")
+        camera.capture(f"{self.photoVideoDir}{dateStr}{self.photoFilenamePi}")
         self._closeCamera()
         if self._webcam_enabled:
             # Take webcam photo
             ffmegCmd: list = self.ffmegStr.split()
-            ffmegCmd.append(f"{dateStr}{self.photoFilenameWeb}")
+            ffmegCmd.append(f"{self.photoVideoDir}{dateStr}{self.photoFilenameWeb}")
             ffmegCmd.append(self.devnull)
             subprocess.run(args=ffmegCmd)
 
     def takeVideo(self, dateStr: str):
-        outfile: str = f"{dateStr}{self.videoFilename}"
+        outfile: str = f"{self.photoVideoDir}{dateStr}{self.videoFilename}"
         camera = self._getCamera()
         camera.start_recording(
             output=f"{outfile}.h264", format="h264", resize=(640, 480)
@@ -117,23 +118,35 @@ def noOneHome():
     except:
         noOneHome = True
 
+    # Also register no one home if between 2300 and 0500
+    # This ensures that capture is running overnight
+    nowTime = datetime.now()
+    if nowTime.hour > 23 or nowTime.hour < 5:
+        noOneHome = True
     return noOneHome
 
 
 # Start
 
-camera: Camera = Camera(WEB_CAM)
-while True:
-    # if no one home - start monitoring
-    if noOneHome():
-        # Check pir is on
-        while readPirStatus():
-            # record in 30 second segments whilst pir status is on
-            # and no one is home
+
+def monitorAndRecord():
+    camera: Camera = Camera(WEB_CAM)
+    print("***Starting camera monitoring****")
+    while True:
+        # if no one home - start monitoring
+        if noOneHome():
+            # Check pir is on
+            while readPirStatus():
+                # record in 30 second segments whilst pir status is on
+                # and no one is home
+                dateStr: str = datetime.now().strftime(DATE_FORMAT)
+                camera.takePhoto(dateStr)
+                camera.takeVideo(dateStr)
+        if checkForPhotoCmd():
             dateStr: str = datetime.now().strftime(DATE_FORMAT)
             camera.takePhoto(dateStr)
-            camera.takeVideo(dateStr)
-    if checkForPhotoCmd():
-        dateStr: str = datetime.now().strftime(DATE_FORMAT)
-        camera.takePhoto(dateStr)
-    sleep(0.5)
+        sleep(0.5)
+
+
+if __name__ == "__main__":
+    monitorAndRecord()
