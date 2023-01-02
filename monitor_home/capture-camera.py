@@ -15,7 +15,7 @@ DEVICES_FILE = "/home/danny/digi-thermostat/monitor_home/lan_devices.txt"
 
 class Camera:
     _webcam_enabled: bool
-    _camera: PiCamera = None
+    _camera: PiCamera
     photoFilenamePi: str = "-piphoto.jpeg"
     photoFilenameWeb: str = "-webphoto.jpeg"
     videoFilename: str = "-pioutput"
@@ -23,6 +23,10 @@ class Camera:
     ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video1 -r 3.0 -frames 1 -y"
     mp4ConvStr = "MP4Box -add"
     devnull = " >/dev/null"
+
+    def __init__(self, web_cam_on: bool, camera: PiCamera = None):
+        self._webcam_enabled = web_cam_on
+        self._camera = camera
 
     def _getCamera(self):
         if not self._camera:
