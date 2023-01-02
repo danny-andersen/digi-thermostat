@@ -301,6 +301,8 @@ def generateStatusFile(sc: StationContext):
                 statusf.write("External temp: Not Set\n")
             statusf.write(f"No of Schedules: {sc.noOfSchedules}\n")
             statusf.write(f"Last heard time: {now.strftime('%Y%m%d %H:%M:%S')}\n")
+            statusf.write(f"PIR:{sc.currentPirStatus}\n")
+
     except:
         print("Failed to write status file")
 

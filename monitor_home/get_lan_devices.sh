@@ -1,6 +1,6 @@
 #!/bin/bash
 function upload_image {
-  sudo fswebcam -r 1280x720 home.jpg
+#   sudo fswebcam -r 1280x720 home.jpg
   ./dropbox_uploader.sh upload home.jpg home.jpg
 }
 
@@ -31,6 +31,7 @@ then
           sudo /sbin/shutdown -r now
       fi
 fi
+
 #Catch all - If greater than 60 mins ago, reboot
 #Note that this will cause a reboot every hour if AP is down
 cnt=$(find ./ -name wifi-up.txt -mmin +60 | wc -l)
@@ -42,11 +43,10 @@ fi
 filename=$(date +%Y%m%d)"_device_change.txt"
 sensor_dir=/sys/bus/w1/devices/28-051673fdeeff
 masterstation=../masterstation
-safeDevice="Dans-Pixel|Sans-A5-Phone"
+safeDevice=`cat safeDevices.txt`
 uploadStatus=N
-sudo chmod 666 /dev/video0
 
-mv lan_devices.txt lan_devices.old
+> lan_devices.new
 #rm host_list.html
 #wget -O host_list.html 192.168.1.1 
 #./parse_html.sh host_list.html | grep -v "^Active" | grep -v "^No" | grep -v "^Disabled" > lan_devices.txt
@@ -54,19 +54,32 @@ mv lan_devices.txt lan_devices.old
 dev=$(echo $safeDevice | sed 's/|/ /g')
 for d in $dev
 do
-	ping -c2 $d > /dev/null
+	ping -c2 $d > /dev/null 2>&1
 	if [ $? == 0 ]
 	then
-		echo $d >> lan_devices.txt
+		echo $d >> lan_devices.new
 	fi
 done	
 
-diff -q lan_devices.txt lan_devices.old
+diff -q lan_devices.new lan_devices.txt
 if [ $? -eq 1 ]
 then
-	date +%H%M > tmpdiff
-	diff lan_devices.txt lan_devices.old | sed -f seddiff >> tmpdiff
+    #Find new devices and add to device change file
+    >tmpdiff
+	newDevs=`diff lan_devices.new lan_devices.txt | grep '<' | awk '{print $2}'`
+  	dateStr=`date +%H%M`
+    for dev in $newDevs
+    do
+        echo $dateStr':Device:New:'$dev >>tmpdiff
+    done
+    #Find removed devices and add to device change file
+	goneDevs=`diff lan_devices.new lan_devices.txt | grep '>' | awk '{print $2}'`
+    for dev in $goneDevs
+    do
+        echo $dateStr':Device:Gone:'$dev >>tmpdiff
+    done
 	cat tmpdiff >> $filename
+    cp lan_devices.new lan_devices.txt
 	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt
 	uploadStatus=Y
 fi
@@ -96,7 +109,7 @@ then
     fi
     if [ $contents = "photo" ];
     then
-    	upload_image
+    	touch take-photo.txt
     fi
     if [ $contents = "reset" ];
     then
@@ -128,25 +141,28 @@ then
 fi
 	 
 #Check if motion is running
-sudo service motion status
-if [ $? -eq 0 ]
-then
-    #Motion is running
-    grep -qE $safeDevice lan_devices.txt  
-    if [ $? -eq 0 ]
-    then
-	echo "Someones home - turn motion detection off"
-	sudo service motion stop
-    fi
-else
-    #Motion isnt running
-    grep -qE $safeDevice lan_devices.txt  
-    if [ $? -ne 0 ]
-    then
-	echo "No ones home - turn motion detection on"
-	sudo service motion start
-    fi
-fi
+# sudo service motion status
+# if [ $? -eq 0 ]
+# then
+#     #Motion is running
+#     grep -qE $safeDevice lan_devices.txt  
+#     if [ $? -eq 0 ]
+#     then
+# 	echo "Someones home - turn motion detection off"
+# 	sudo service motion stop
+#     fi
+# else
+#     #Motion isnt running
+#     grep -qE $safeDevice lan_devices.txt  
+#     if [ $? -ne 0 ]
+#     then
+# 	echo "No ones home - turn motion detection on"
+# 	sudo service motion start
+#     fi
+# fi
+
+#Check pir status
+#pirStat=$(grep "PIR:" thermostat_status.txt | awk -F: '{print $2}')
 
 #Upload any motion video not uploaded and delete file
 files=$(find motion_images/ -name "*.avi" -mmin +0 -size +200k)
