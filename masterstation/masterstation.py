@@ -247,8 +247,11 @@ MONITOR_TIME = 30  # number of seconds between running monitor script
 
 def runMonitorScript():
     print(f"******Starting monitor script thread loop {MONITOR_SCRIPT}")
+    # Wait until server up and running
+    sleep(15)
     while True:
         startTime = datetime.now().timestamp()
+        print("Running monitoring script")
         subprocess.run(args=MONITOR_SCRIPT, shell=True)
         endTime = datetime.now().timestamp()
         elapsed = endTime - startTime
@@ -271,6 +274,8 @@ def setup():
             cameraThread.start()
             monitorScriptThread = Thread(target=runMonitorScript, daemon=True)
             monitorScriptThread.start()
+            sleep(10)
+            lock.release()
     except Timeout:
         print("This thread skipping creating monitoring threads")
         pass
