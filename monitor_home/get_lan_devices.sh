@@ -170,9 +170,9 @@ fi
 # fi
 
 #Upload any video or photo not uploaded and delete file
-files=$(find $video_picture_dir -name "*.mp4" -mmin +0 -size +200k)
+files=$(find $video_picture_dir -name "*.mp4" -mmin +0 -size +10k)
 upload_images $files
-files=$(find $video_picture_dir -name "*.jpeg" -mmin +0 -size +200k)
+files=$(find $video_picture_dir -name "*.jpeg" -mmin +0 -size +10k)
 upload_images $files
 
 #Refresh picture every hour

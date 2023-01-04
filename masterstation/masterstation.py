@@ -6,7 +6,7 @@ from datetime import datetime
 from os import stat, path, remove
 import json
 import copy
-from threading import Thread, Lock
+from multiprocessing import Process
 from time import sleep
 import subprocess
 
@@ -270,10 +270,10 @@ def setup():
         if lock.acquire(1):
             print("Starting monitoring threads")
             # Only one thread gets the lock
-            cameraThread = Thread(target=monitorAndRecord, daemon=True)
-            cameraThread.start()
-            monitorScriptThread = Thread(target=runMonitorScript, daemon=True)
-            monitorScriptThread.start()
+            cameraProcess = Process(target=monitorAndRecord, daemon=True)
+            cameraProcess.start()
+            monitorScriptProcess = Process(target=runMonitorScript, daemon=True)
+            monitorScriptProcess.start()
             sleep(10)
             lock.release()
     except Timeout:

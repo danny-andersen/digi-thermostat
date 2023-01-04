@@ -5,7 +5,7 @@ import subprocess
 import os
 from picamera import PiCamera
 
-WEB_CAM = False
+WEB_CAM = True
 DATE_FORMAT: str = "%Y%m%dT%H%M%S"
 STATUS_FILE = "/home/danny/digi-thermostat/masterstation/status.txt"
 MAX_LAST_UPDATE = 5 * 60
@@ -21,9 +21,8 @@ class Camera:
     photoFilenameWeb: str = "-webphoto.jpeg"
     videoFilename: str = "-pioutput"
 
-    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video1 -r 3.0 -frames 1 -y"
+    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -r 3.0 -frames 1 -y"
     mp4ConvStr = "MP4Box -add"
-    devnull = " >/dev/null"
 
     def __init__(self, web_cam_on: bool, camera: PiCamera = None):
         self._webcam_enabled = web_cam_on
@@ -51,8 +50,7 @@ class Camera:
             # Take webcam photo
             ffmegCmd: list = self.ffmegStr.split()
             ffmegCmd.append(f"{self.photoVideoDir}{dateStr}{self.photoFilenameWeb}")
-            ffmegCmd.append(self.devnull)
-            subprocess.run(args=ffmegCmd)
+            subprocess.run(args=ffmegCmd, stdout=subprocess.DEVNULL)
 
     def takeVideo(self, dateStr: str):
         outfile: str = f"{self.photoVideoDir}{dateStr}{self.videoFilename}"
@@ -70,7 +68,7 @@ class Camera:
         mp4cmd.append(f"{videoName}.mp4")
         #    mp4cmd.append(devnull)
         # TODO run the conversion command in the background and delete following conversion
-        subprocess.run(args=mp4cmd)
+        subprocess.run(args=mp4cmd, stdout=subprocess.DEVNULL)
         os.remove(f"{videoName}.h264")
 
 
