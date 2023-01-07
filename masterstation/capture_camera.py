@@ -2,6 +2,7 @@ from time import sleep
 from fractions import Fraction
 from datetime import datetime
 import subprocess
+from multiprocessing import Process
 import os
 from picamera import PiCamera
 
@@ -11,6 +12,7 @@ STATUS_FILE = "/home/danny/digi-thermostat/masterstation/status.txt"
 MAX_LAST_UPDATE = 5 * 60
 TAKE_PHOTO_FILE: str = "/home/danny/digi-thermostat/monitor_home/take-photo.txt"
 DEVICES_FILE = "/home/danny/digi-thermostat/monitor_home/lan_devices.txt"
+RECORD_TIME = 15  # Number of seconds to record each video segment
 
 
 class Camera:
@@ -21,7 +23,8 @@ class Camera:
     photoFilenameWeb: str = "-webphoto.jpeg"
     videoFilename: str = "-pioutput"
 
-    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -r 3.0 -frames 1 -y"
+    # TODO move these to a seperate config txt file
+    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -r 3.0 -frames 1 -y -loglevel error"
     mp4ConvStr = "MP4Box -add"
 
     def __init__(self, web_cam_on: bool, camera: PiCamera = None):
@@ -40,25 +43,38 @@ class Camera:
             self._camera.close()
             self._camera = None
 
-    def takePhoto(self, dateStr: str):
+    def takePiCamPhoto(self, dateStr: str):
         # Take photo with picam
         camera = self._getCamera()
         camera.resolution = (1024, 768)
         camera.capture(f"{self.photoVideoDir}{dateStr}{self.photoFilenamePi}")
         self._closeCamera()
+
+    def takeWebCamPhoto(self, dateStr: str):
+        # Take webcam photo
+        ffmegCmd: list = self.ffmegStr.split()
+        ffmegCmd.append(f"{self.photoVideoDir}{dateStr}{self.photoFilenameWeb}")
+        subprocess.run(args=ffmegCmd)
+
+    def takePhoto(self, dateStr: str):
+        # Take photos in parallel using Process and then wait until they are done
+        cameraProcess = Process(target=self.takePiCamPhoto)
+        cameraProcess.start()
         if self._webcam_enabled:
-            # Take webcam photo
-            ffmegCmd: list = self.ffmegStr.split()
-            ffmegCmd.append(f"{self.photoVideoDir}{dateStr}{self.photoFilenameWeb}")
-            subprocess.run(args=ffmegCmd, stdout=subprocess.DEVNULL)
+            webCamProc = Process(target=self.takeWebCamPhoto)
+            webCamProc.start()
+            webCamProc.join()
+        cameraProcess.join()
 
     def takeVideo(self, dateStr: str):
+        # TODO: Work out how to take webcam video
+        # TODO: Take videos in parallel using Process
         outfile: str = f"{self.photoVideoDir}{dateStr}{self.videoFilename}"
         camera = self._getCamera()
         camera.start_recording(
             output=f"{outfile}.h264", format="h264", resize=(640, 480)
         )
-        camera.wait_recording(30)
+        camera.wait_recording(RECORD_TIME)
         camera.stop_recording()
         self.wrapH264(outfile)
 
@@ -133,9 +149,10 @@ def monitorAndRecord():
     while True:
         # if no one home - start monitoring
         if noOneHome():
+            # TODO - if no one home, take photo every hour?
             # Check pir is on
             while readPirStatus():
-                # record in 30 second segments whilst pir status is on
+                # record in 15 second segments whilst pir status is on
                 # and no one is home
                 dateStr: str = datetime.now().strftime(DATE_FORMAT)
                 camera.takePhoto(dateStr)
