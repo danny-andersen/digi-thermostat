@@ -207,7 +207,9 @@ class StationContext:
 
     def saveStationContext(self, oldContext: object = None):
         # First determine if anything has changed - only update context file if it has
+        changed = False
         if self.stationNo != -1 and self != oldContext:
+            changed = True
             # save context
             jsonStr = json.dumps(self.__dict__)
             # Write json to station file
@@ -444,7 +446,10 @@ def getMessage():
         else:
             pass  # Do something else
 
-    sc.saveStationContext(startContext)
+    if sc.saveStationContext(startContext):
+        # Generate status file if context has changed
+        generateStatusFile(sc)
+
     return response
 
 
@@ -583,6 +588,8 @@ def getSetTemp(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
+        generateStatusFile(sc)
+
     return response
 
 
@@ -636,6 +643,7 @@ def getExtTemp(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
+        generateStatusFile(sc)
 
     return response
 
@@ -716,6 +724,8 @@ def getHoliday(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
+        generateStatusFile(sc)
+
     return response
 
 
