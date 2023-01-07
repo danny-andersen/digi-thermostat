@@ -31,7 +31,7 @@ uRTCLib rtc;
 
 // LCD
 // LiquidCrystal_I2C lcd(0x27, 20, 4);
-LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 
+LiquidCrystal_PCF8574 lcd(0x27); // set the LCD address to 0x27
 
 // WIFI Port
 SoftwareSerial wifiSerial(WIFI_RX, WIFI_TX); // RX, TX
@@ -105,7 +105,8 @@ void setup()
 {
   // Serial.begin(9600);
   //  printf_begin();
-  //  while (!Serial);
+  // while (!Serial)
+    // ;
   currentMillis = millis();
   lastRTCRead = currentMillis;
   lastTempRead = 0;
@@ -153,7 +154,7 @@ void setup()
   // set up the LCD's number of columns and rows:
   // lcd.init();
   // lcd.backlight();
-  lcd.begin(20,4);
+  lcd.begin(20, 4);
   lcd.clear();
   lcd.display();
   lcd.setBacklight(255);
@@ -246,8 +247,8 @@ void loop()
     {
       holidaySetTimer = 0;
     }
-  } 
-  else if (holidayTime > 0) //Only start count down holiday timer if still not setting time
+  }
+  else if (holidayTime > 0) // Only start count down holiday timer if still not setting time
   {
     // Countdown timer for instant holiday time
     if (holidayTime > loopDelta)
@@ -291,11 +292,12 @@ void loop()
       // First check remote override...
       if (holidayTime > 0)
       {
-        //In manual holiday mode - allow remote override
+        // In manual holiday mode - allow remote override
         currentSetTemp = manHolidayTemp;
-
-      } else {
-          currentSetTemp = holiday.elem.temp;
+      }
+      else
+      {
+        currentSetTemp = holiday.elem.temp;
       }
     }
     else
@@ -347,16 +349,6 @@ void loop()
     changedState = 2;
   }
 
-  // Check for any messages
-  if (currentMillis - lastMessageCheck > MESSAGE_CHECK_INTERVAL)
-  {
-    if (networkUp)
-    {
-      getNextMessage();
-      drainSerial();
-    }
-  }
-
   // Check if motd has expired
   if (motdExpiryTimer > 0)
   {
@@ -369,7 +361,7 @@ void loop()
       motdExpiryTimer = 0;
     }
   }
-  if (motdExpiryTimer == 0)
+  if (networkUp && motdExpiryTimer == 0)
   {
     // Forecast has expired, as has external temp and wind
     // Request new ones
@@ -402,6 +394,48 @@ void loop()
     changedState = 2;
   }
 
+  // Check for any messages
+  if (currentMillis - lastMessageCheck > MESSAGE_CHECK_INTERVAL)
+  {
+    if (networkUp)
+    {
+      getNextMessage();
+      drainSerial();
+    }
+    else
+    {
+      uint8_t stat = checkNetworkUp(false);
+      if (stat == 0)
+      {
+        networkUp = true;
+      }
+      else
+      {
+        if (networkDownTime - currentMillis > NETWORK_DOWN_LIMIT)
+        {
+          // Reset the processor to reset the wifi card
+          resetFunc();
+        }
+        lastMessageCheck = currentMillis;
+        if (stat == 1)
+        {
+          // Got full status report
+          //         debugSerial.print("Network still down. New motd:");
+          //  snprintf(&motd[0], MAX_MOTD_SIZE, (char *)buff);
+          setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
+          //        debugSerial.println(motd);
+        }
+        else if (stat == 2)
+        {
+          //        debugSerial.print("Network down. New motd:");
+          // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)"No response from wifi card");
+          setTempMotd(LITERAL_STATUS, (char *)"No response from wifi card");
+          //        debugSerial.println(motd);
+        }
+      }
+    }
+  }
+
   if (checkBackLight())
   {
     // lcd.backlight();
@@ -427,42 +461,6 @@ void loop()
     {
       getDateTime();
       drainSerial();
-    }
-  }
-
-  if (!networkUp)
-  {
-    uint8_t stat = checkNetworkUp(false);
-    if (stat == 0)
-    {
-      networkUp = true;
-    }
-    else
-    {
-      lastMessageCheck = currentMillis;
-      if (networkDownTime - currentMillis > NETWORK_DOWN_LIMIT)
-      {
-        // Reset the thermostat to reset the wifi card
-        resetFunc();
-      }
-      if (stat == 1)
-      {
-        // Got full status report
-        //         debugSerial.print("Network still down. New motd:");
-        //  snprintf(&motd[0], MAX_MOTD_SIZE, (char *)buff);
-        strncat(&motd[0], (char *)buff, MAX_MOTD_SIZE);
-
-        //        debugSerial.println(motd);
-      }
-      else if (stat == 2)
-      {
-        //        debugSerial.print("Network down. New motd:");
-        // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)"No response from wifi card");
-        strncat(&motd[0], (char *)"No response from wifi card", MAX_MOTD_SIZE);
-        //        debugSerial.println(motd);
-      }
-      scrollPos = 0;
-      changedState = 2;
     }
   }
 
@@ -493,7 +491,7 @@ void intHandlerRotaryA()
     // Only inc state on rising edge of A and B is off (CW rotation)
     if (rotaryA && !rotaryB)
     {
-      if (holidaySetTimer > 0) //Setting holiday time 
+      if (holidaySetTimer > 0) // Setting holiday time
       {
         if (holidayTime > 0)
         {
@@ -504,9 +502,9 @@ void intHandlerRotaryA()
           holidayTime = calcHolidayTime(); // Reset to next boudary
         }
         lastScheduledTemp = holiday.elem.temp; // Force new currentSetTemp when holiday over
-        manHolidayTemp = holiday.elem.temp; //Use this temp during holiday time - allows remote override by overriding this value
+        manHolidayTemp = holiday.elem.temp;    // Use this temp during holiday time - allows remote override by overriding this value
       }
-      else //This is manually increasing the temp
+      else // This is manually increasing the temp
       {
         currentSetTemp = currentSetTemp + SET_INTERVAL;
       }
@@ -525,13 +523,13 @@ void intHandlerRotaryB()
     // Only inc state on rising edge of B and A is off (CCW rotation)
     if (rotaryB && !rotaryA)
     {
-      if (holidaySetTimer > 0) //Setting holiday time
+      if (holidaySetTimer > 0) // Setting holiday time
       {
         holidayTime -= 15 * 60000; // Take 15mins off holiday time
         if (holidayTime < 0)
           holidayTime = 0;
       }
-      else //This is manually decreasing the temp
+      else // This is manually decreasing the temp
       {
         currentSetTemp = currentSetTemp - SET_INTERVAL;
       }
@@ -554,7 +552,7 @@ void readInputs(void)
       // Treat as set holiday time
       holidaySetTimer = 0;
     }
-    changedState = 2;
+    changedState = 1;
   }
 }
 
@@ -628,7 +626,10 @@ bool getNextMessage()
   }
   snprintf(getMessage, MAX_GET_MSG_SIZE, GET_TEMPLATE, msglen, nextMessage);
   uint8_t msgId = sendMessage(getMessage);
-  resendMessages = 0;
+  if (msgId > 0)
+  {
+    resendMessages = 0;
+  }
   return processMessage(msgId);
 }
 
@@ -682,32 +683,27 @@ bool getMotd()
 
 bool processMessage(uint8_t msgId)
 {
-  bool msgRx = true;
+  bool msgRx = false;
   switch (msgId)
   {
-  case -1:
-    if (networkUp)
-    {
-      networkUp = false;
-      networkDownTime = currentMillis;
-    }
-    break;
   case 0:
     // No message
     lastMessageCheck = currentMillis;
-    msgRx = false; // No actual message returned
     // This is the default message that is sent if no other
     break;
   case SET_DATE_TIME_MSG:
     // Process Date time
+    msgRx = true;
     setDateTime();
     break;
   case MOTD_MSG:
     // Process Date time
+    msgRx = true;
     setMotd();
     break;
   case SET_THERM_TEMP_MSG:
     // Process thermometer temp
+    msgRx = true;
     setThermTemp();
     // Only this and no message set the lastMessageCheck time
     // this means that next message will be requested on the next loop
@@ -715,28 +711,32 @@ bool processMessage(uint8_t msgId)
     break;
   case SET_TEMP_MSG:
     // Process set temp msg
+    msgRx = true;
     setSetTemp();
     break;
   case SET_EXT_MSG:
     // Process external temp
+    msgRx = true;
     setExtTemp();
     break;
   case SET_HOLIDAY_MSG:
     // Process Date time
+    msgRx = true;
     setHoliday();
     break;
   case SCHEDULE_MSG:
     // Process Date time
+    msgRx = true;
     setSchedule();
     break;
   case DELETE_ALL_SCHEDULES_MSG:
+    msgRx = true;
     deleteAllSchedules();
     break;
   case RESET_MSG:
     resetFunc();
     break;
   }
-  resendMessages = false;
   flickerLED();
   return msgRx;
 }
@@ -761,7 +761,7 @@ void setThermTemp()
   }
   lastThermTempTime = currentMillis;
   boilerRunTime = getRunTime();
-  // changedState = 2;
+  changedState = 1;
 }
 
 void setSetTemp()
@@ -769,7 +769,7 @@ void setSetTemp()
   Temp *tp = (Temp *)&buff[4]; // Start of content
   currentSetTemp = tp->temp;
   manHolidayTemp = tp->temp;
-  // changedState = 2;
+  changedState = 1;
 }
 
 void setExtTemp()
@@ -778,7 +778,7 @@ void setExtTemp()
   extTemp = tp->temp;
   windStr[0] = '\0';
   strncat(&windStr[0], tp->windStr, MAX_WIND_SIZE);
-  // changedState = 2;
+  changedState = 1;
 }
 
 void setDateTime()
@@ -794,7 +794,7 @@ void setDateTime()
           dtp->month,
           dtp->year);
   rtc.refresh();
-  changedState = 2;
+  changedState = 1;
 }
 
 void setHoliday()
@@ -1209,7 +1209,7 @@ void getSetPoint(SchedUnion *schedule, uint16_t mins, int currDay, bool nextSche
         nextMins = sched.elem.start;
         memcpy(&schedule->raw, &schedules[i], sizeof(SchedByElem));
       }
-      if (sched.elem.day == 0x100 && (currDay >= 1 || currDay <= 5) && priority <= 2)
+      if (sched.elem.day == 0x100 && (currDay >= 1 && currDay <= 5) && priority <= 2)
       {
         // Its a weekday and not found higher
         priority = 2;
@@ -1233,10 +1233,10 @@ boolean checkOnHoliday()
   boolean beforeEnd = false;
   if (holidayTime > 0)
   {
-    //On manual holiday
+    // On manual holiday
     afterStart = true;
     beforeEnd = true;
-    holiday.elem.temp = 100; //Set to default holiday temp of 10C
+    holiday.elem.temp = 100; // Set to default holiday temp of 10C
   }
   else if (holiday.elem.valid == 1)
   {
@@ -1503,39 +1503,29 @@ uint8_t sendMessage(char msg[])
 {
   uint8_t retries = 0;
   int8_t msgId = -1; // Signifies message failed
-  while (retries < 2 && msgId == -1)
+  drainSerial();
+  wifiSerial.println(msg);
+  wifiSerial.println();
+  int16_t msgLen = waitForGetResponse();
+  if (msgLen > 0)
   {
-    drainSerial();
-    wifiSerial.println(msg);
-    wifiSerial.println();
-    int16_t msgLen = waitForGetResponse();
-    if (msgLen > 0)
+    // Got HTTP response - extract content part
+    Message *msgp = (Message *)&buff[0];
+    msgId = msgp->id;
+    uint16_t rxCrc = msgp->crc;
+    msgp->crc = 0;
+    crc_t crc = crc_calculate(&buff[0], msgp->len);
+    if (crc != rxCrc)
     {
-      // Got HTTP response - extract content part
-      Message *msgp = (Message *)&buff[0];
-      msgId = msgp->id;
-      uint16_t rxCrc = msgp->crc;
-      msgp->crc = 0;
-      crc_t crc = crc_calculate(&buff[0], msgp->len);
-      if (crc != rxCrc)
-      {
-        setTempMotd(MESSAGE_FAIL, "CRC failed");
-        msgId = -1;
-      }
-      else if (rxInFail)
-      {
-        rxInFail = false;
-        setTempMotd(SERVER_STATUS, "Now Up");
-      }
-    }
-    else if (msgLen == 0)
-    {
-      setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
+      setTempMotd(MESSAGE_FAIL, "CRC failed");
+      msgId = -1;
       rxInFail = true;
-      lastMessageCheck = currentMillis; // reset message check timer
-      break;
     }
-    retries++;
+    else if (rxInFail)
+    {
+      rxInFail = false;
+      setTempMotd(SERVER_STATUS, "Now Up");
+    }
   }
   return msgId;
 }
@@ -1614,6 +1604,7 @@ int16_t waitForGetResponse()
   unsigned long totalWaitTime = 0;
   int16_t msgLen = 0;
   bool gotMsg = false;
+  bool fail = false;
   int8_t success = -1;
   while (waitTime < MAX_RESPONSE_TIME && !gotMsg)
   {
@@ -1667,6 +1658,12 @@ int16_t waitForGetResponse()
     }
     waitTime = millis() - lastByteTime; // Timeout if not received a byte for max wait time
   }
+  if (gotMsg && msgLen == 0)
+  {
+    // Didnt receive a valid message - buffer contains error message from wifi card
+    setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
+    fail = true;
+  }
   if (waitTime >= MAX_RESPONSE_TIME && !gotMsg)
   {
     //    debugSerial.print("Rx timeout:");
@@ -1674,14 +1671,24 @@ int16_t waitForGetResponse()
     //    debugSerial.print(" Got:");
     //    debugSerial.print(bufPos);
     //    printBuff(bufPos);
-    snprintf(&motd[0], MAX_MOTD_SIZE, "Msg Timeout Rx %d of %d", bufPos, msgLen);
-
+    snprintf(&motd[0], MAX_MOTD_SIZE, "Msg TO Rx %d of %d", bufPos, msgLen);
     // Serial.println(motd);
     motdExpiryTimer = TEMP_MOTD_TIME;
     scrollPos = 0;
-    rxInFail = true;
-    msgLen = -1;
+    changedState = 1;
+    fail = true;
   }
+  if (fail)
+  {
+    lastMessageCheck = currentMillis; // reset message check timer
+    rxInFail = true;
+    if (networkUp)
+    {
+      networkUp = false;
+      networkDownTime = currentMillis;
+    }
+  }
+
   return msgLen;
 }
 

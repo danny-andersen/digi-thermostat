@@ -18,7 +18,7 @@
 #define LOOP_DELAY 50
 #define RTC_READ_INTERVAL 500UL
 #define TEMPERATURE_READ_INTERVAL 15000UL // 15 secs
-#define LOCAL_TEMP_ADJUST 35 //Local thermister reads 3.5C over - so reduce reading 
+#define LOCAL_TEMP_ADJUST 35              // Local thermister reads 3.5C over - so reduce reading
 #define SCHED_CHECK_INTERVAL 1000UL
 #define MESSAGE_CHECK_INTERVAL 10000UL // 10 secs
 // #define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
@@ -75,7 +75,7 @@ char extTempStr[] = "exttemp";
 char motdStr[] = "motd";
 char holidayStr[] = "holiday";
 
-#define NETWORK_DOWN_LIMIT 15 * 60 * 1000 // 15 mins for Network to come up otherwise reboot thermostat
+#define NETWORK_DOWN_LIMIT 30 * 60 * 1000 // 30 mins for Network to come up otherwise reboot
 bool networkUp = false;
 bool rxInFail = false;
 
