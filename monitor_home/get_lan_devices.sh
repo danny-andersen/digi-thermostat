@@ -175,17 +175,19 @@ upload_images $files
 files=$(find $video_picture_dir -name "*.jpeg" -mmin +0 -size +10k)
 upload_images $files
 
-#Refresh picture every hour
 mins=$(date +%M)
-if [ $mins -eq 0 ]
-then
-    touch take-photo.txt
-fi
+
+# #Refresh picture every hour
+# if [ $mins -eq 0 ]
+# then
+#     touch take-photo.txt
+# fi
 
 #Update weather every 30mins
-istime=$((mins % 30))
-if [ $istime -eq 0 ]
+istime=$((10#$mins % 30))
+if ! [ -f $masterstation/motd.txt ] || [ $istime -eq 0 ] 
 then
+    #motd timed out - get a new one
    cd ${masterstation}
    ./getBBCWeather.sh > /dev/null 2>&1
    cd -
