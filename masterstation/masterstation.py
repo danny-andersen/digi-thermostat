@@ -218,6 +218,7 @@ class StationContext:
                     f.write(jsonStr)
                 except:
                     print("Failed to write context file")
+        return changed
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, StationContext):
