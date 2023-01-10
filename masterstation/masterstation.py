@@ -273,7 +273,7 @@ def setup():
         if lock.acquire(1):
             print("Starting monitoring threads")
             # Only one thread gets the lock
-            cameraProcess = Process(target=monitorAndRecord, daemon=True)
+            cameraProcess = Process(target=monitorAndRecord, daemon=False)
             cameraProcess.start()
             monitorScriptProcess = Process(target=runMonitorScript, daemon=True)
             monitorScriptProcess.start()

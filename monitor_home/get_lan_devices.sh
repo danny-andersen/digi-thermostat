@@ -119,6 +119,10 @@ then
     then
     	touch take-photo.txt
     fi
+    if [ $contents = "video" ];
+    then
+    	touch take-video.txt
+    fi
     if [ $contents = "reset" ];
     then
     	touch $masterstation/resetReq.txt
@@ -170,9 +174,11 @@ fi
 # fi
 
 #Upload any video or photo not uploaded and delete file
-files=$(find $video_picture_dir -name "*.mp4" -mmin +0 -size +10k)
+files=$(find $video_picture_dir -name "*.jpeg" -mmin +0)
 upload_images $files
-files=$(find $video_picture_dir -name "*.jpeg" -mmin +0 -size +10k)
+files=$(find $video_picture_dir -name "*.mp4" -mmin +0)
+upload_images $files
+files=$(find $video_picture_dir -name "*.mpeg" -mmin +0)
 upload_images $files
 
 mins=$(date +%M)
