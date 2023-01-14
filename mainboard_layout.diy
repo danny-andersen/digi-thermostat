@@ -577,6 +577,17 @@
       <holeSpacing value="0.1" unit="in"/>
       <point x="7.0" y="3.1"/>
     </diylc.connectivity.TraceCut>
+    <diylc.connectivity.TraceCut>
+      <name>Cut3</name>
+      <size value="0.08" unit="in"/>
+      <fillColor hex="ffffff"/>
+      <borderColor hex="ff0000"/>
+      <boardColor hex="f8ebb3"/>
+      <cutBetweenHoles>false</cutBetweenHoles>
+      <orientation>VERTICAL</orientation>
+      <holeSpacing value="0.1" unit="in"/>
+      <point x="7.0" y="3.0"/>
+    </diylc.connectivity.TraceCut>
     <diylc.semiconductors.DIL__IC>
       <name>IC1</name>
       <alpha>100</alpha>
@@ -1447,6 +1458,63 @@
       <point x="7.7" y="4.2"/>
       <text>RST</text>
       <font name="Dialog.plain" size="14" style="0"/>
+      <color hex="000000"/>
+      <center>false</center>
+      <horizontalAlignment>LEFT</horizontalAlignment>
+      <verticalAlignment>CENTER</verticalAlignment>
+      <orientation>DEFAULT</orientation>
+    </diylc.misc.Label>
+    <diylc.passive.Resistor>
+      <name>R8</name>
+      <alpha>100</alpha>
+      <length value="6.35" unit="mm"/>
+      <width value="2.2" unit="mm"/>
+      <points>
+        <point x="7.4" y="3.0"/>
+        <point x="7.4" y="4.1"/>
+        <point x="7.4" y="3.55"/>
+      </points>
+      <bodyColor hex="82cffd"/>
+      <borderColor hex="5b90b1"/>
+      <labelColor hex="000000"/>
+      <leadColor hex="cccccc"/>
+      <display>NAME</display>
+      <flipStanding>false</flipStanding>
+      <labelOriantation>Directional</labelOriantation>
+      <moveLabel>false</moveLabel>
+      <hideShortLeads>false</hideShortLeads>
+      <power>HALF</power>
+      <colorCode>_5_BAND</colorCode>
+      <shape>Standard</shape>
+    </diylc.passive.Resistor>
+    <diylc.passive.Resistor>
+      <name>R9</name>
+      <alpha>100</alpha>
+      <length value="6.35" unit="mm"/>
+      <width value="2.2" unit="mm"/>
+      <points>
+        <point x="6.8" y="3.0"/>
+        <point x="7.2" y="3.0"/>
+        <point x="7.0" y="3.0"/>
+      </points>
+      <bodyColor hex="82cffd"/>
+      <borderColor hex="5b90b1"/>
+      <labelColor hex="000000"/>
+      <leadColor hex="cccccc"/>
+      <display>NAME</display>
+      <flipStanding>false</flipStanding>
+      <labelOriantation>Directional</labelOriantation>
+      <moveLabel>false</moveLabel>
+      <hideShortLeads>false</hideShortLeads>
+      <power>HALF</power>
+      <colorCode>_5_BAND</colorCode>
+      <shape>Standard</shape>
+    </diylc.passive.Resistor>
+    <diylc.misc.Label>
+      <name>L15</name>
+      <point x="7.7" y="3.0"/>
+      <text>WiFi RST</text>
+      <font reference="../../diylc.misc.Label[15]/font"/>
       <color hex="000000"/>
       <center>false</center>
       <horizontalAlignment>LEFT</horizontalAlignment>

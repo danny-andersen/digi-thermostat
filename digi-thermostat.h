@@ -10,6 +10,7 @@
 #define RED_LED 8
 #define WIFI_RX 10
 #define WIFI_TX 11
+#define WIFI_RESET_PIN 12
 
 #define PIR_PIN A0 // Analogue 0
 
@@ -23,7 +24,7 @@
 #define MESSAGE_CHECK_INTERVAL 10000UL // 10 secs
 // #define SCROLL_INTERVAL 150UL //Speed at which to scroll message (word shift speed)
 #define SCROLL_PAUSE 1200UL        // Pause at screen roll
-#define RX_TEMP_INTERVAL 300000UL  // msecs, 5 min timeout of temp from masterstation
+#define RX_TEMP_INTERVAL 120000UL  // msecs, 2 min timeout of temp from masterstation
 #define GET_TIME_INTERVAL 300000UL // Get time from masterstation every 5 mins
 #define TEMP_MOTD_TIME 20000UL     // Time to show status msg - 20 secs
 
@@ -53,7 +54,7 @@ char MESSAGE_FAIL[] = "Msg %s";
 
 #define MAX_RESPONSE_TIME 2000 // millis to wait for a response (byte to byte)
 #define MAX_STATUS_TIME 500    // millis to wait for a status response
-#define RECONNECT_WAIT_TIME 10000
+#define RECONNECT_WAIT_TIME 10000UL
 
 #define MAX_GET_MSG_SIZE 60 // Max size of dynamic get msg with params
 #define MAX_MOTD_SIZE 90
@@ -75,7 +76,8 @@ char extTempStr[] = "exttemp";
 char motdStr[] = "motd";
 char holidayStr[] = "holiday";
 
-#define NETWORK_DOWN_LIMIT 30 * 60 * 1000 // 30 mins for Network to come up otherwise reboot
+#define NETWORK_DOWN_LIMIT 900000UL   // Wait 15 mins for Network to come up otherwise reboot
+#define NETWORK_CHECK_INTERVAL 30000UL // Check network up every 30secs when down
 bool networkUp = false;
 bool rxInFail = false;
 

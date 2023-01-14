@@ -122,8 +122,10 @@ class Camera:
         mp4cmd.append(f"{videoName}.h264")
         mp4cmd.append(f"{videoName}.mp4")
         #    mp4cmd.append(devnull)
-        # TODO run the conversion command in the background and delete following conversion
-        subprocess.run(args=mp4cmd, stdout=subprocess.DEVNULL)
+        # Run the conversion command and delete following conversion
+        subprocess.run(
+            args=mp4cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         os.remove(f"{videoName}.h264")
 
 
@@ -173,9 +175,9 @@ def noOneHome():
 
     # Also register no one home if between 2300 and 0500
     # This ensures that capture is running overnight
-    nowTime = datetime.now()
-    if nowTime.hour > 23 or nowTime.hour < 5:
-        noOneHome = True
+    # nowTime = datetime.now()
+    # if nowTime.hour > 23 or nowTime.hour < 5:
+    #     noOneHome = True
     return noOneHome
 
 

@@ -72,8 +72,9 @@ uint8_t pirStatus = 0; // 0 = off, 1 = on (triggered)
 unsigned long motdExpiryTimer = 0;
 unsigned long lastThermTempTime = 0; // Time at which rx last thermometer temp
 unsigned long lastMessageCheck = 0;
+unsigned long lastNetworkCheckTime = 0;
 unsigned long lastRTCTime = 0UL;
-unsigned long networkDownTime = 0; // Time at which the network went down
+unsigned long networkUpTime = 0; // Time at which the network was last up
 
 char *dayNames[7] = {"Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"};
 char *monNames[12] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
@@ -106,7 +107,7 @@ void setup()
   // Serial.begin(9600);
   //  printf_begin();
   // while (!Serial)
-    // ;
+  // ;
   currentMillis = millis();
   lastRTCRead = currentMillis;
   lastTempRead = 0;
@@ -122,6 +123,8 @@ void setup()
   pinMode(RED_LED, OUTPUT);
   pinMode(RELAY, OUTPUT);
   digitalWrite(RELAY, HIGH);
+  pinMode(WIFI_RESET_PIN, OUTPUT);
+  digitalWrite(WIFI_RESET_PIN, HIGH);
   // Digi ins
   pinMode(BOOST_BUTTON, INPUT_PULLUP);
   digitalWrite(BOOST_BUTTON, HIGH);
@@ -212,6 +215,8 @@ void setup()
 
   delay(RECONNECT_WAIT_TIME); // Give time for wifi to connect to AP
   networkUp = true;           // Assume network is up unless shown otherwise
+  networkUpTime = millis();
+  lastNetworkCheckTime = networkUpTime;
   // Turn power led RED to indicate running
 
   digitalWrite(GREEN_LED, LOW);
@@ -339,14 +344,14 @@ void loop()
   if ((currentSetTemp > currentTemp) && !heatOn)
   {
     switchHeat(true);
-    changedState = 2;
+    changedState = 1;
   }
   if (heatOn && (currentTemp > (currentSetTemp + HYSTERSIS)))
   {
     // Reached set temperature, turn heating off
     // Note: Add in hystersis to stop flip flopping
     switchHeat(false);
-    changedState = 2;
+    changedState = 1;
   }
 
   // Check if motd has expired
@@ -391,49 +396,45 @@ void loop()
       windStr[0] = '\0';
       extTemp = 1000;
     }
-    changedState = 2;
+    changedState = 1;
   }
 
   // Check for any messages
-  if (currentMillis - lastMessageCheck > MESSAGE_CHECK_INTERVAL)
+  if (networkUp && (currentMillis - lastMessageCheck) > MESSAGE_CHECK_INTERVAL)
   {
-    if (networkUp)
+    getNextMessage();
+    drainSerial();
+  }
+
+  if (!networkUp && (currentMillis - lastNetworkCheckTime) > NETWORK_CHECK_INTERVAL)
+  {
+    lastNetworkCheckTime = currentMillis;
+    uint8_t stat = checkNetworkUp(false);
+    if (stat == 0)
     {
-      getNextMessage();
-      drainSerial();
+      networkUp = true;
+      networkUpTime = currentMillis;
     }
-    else
+    else if (stat == 1)
     {
-      uint8_t stat = checkNetworkUp(false);
-      if (stat == 0)
-      {
-        networkUp = true;
-      }
-      else
-      {
-        if (networkDownTime - currentMillis > NETWORK_DOWN_LIMIT)
-        {
-          // Reset the processor to reset the wifi card
-          resetFunc();
-        }
-        lastMessageCheck = currentMillis;
-        if (stat == 1)
-        {
-          // Got full status report
-          //         debugSerial.print("Network still down. New motd:");
-          //  snprintf(&motd[0], MAX_MOTD_SIZE, (char *)buff);
-          setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
-          //        debugSerial.println(motd);
-        }
-        else if (stat == 2)
-        {
-          //        debugSerial.print("Network down. New motd:");
-          // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)"No response from wifi card");
-          setTempMotd(LITERAL_STATUS, (char *)"No response from wifi card");
-          //        debugSerial.println(motd);
-        }
-      }
+      // Got full status report
+      //         debugSerial.print("Network still down. New motd:");
+      //  snprintf(&motd[0], MAX_MOTD_SIZE, (char *)buff);
+      setTempMotd(LITERAL_STATUS, (char *)&buff[0]);
+      //        debugSerial.println(motd);
     }
+    else if (stat == 2)
+    {
+      //        debugSerial.print("Network down. New motd:");
+      // snprintf(&motd[0], MAX_MOTD_SIZE, (char *)"No response from wifi card");
+      setTempMotd(LITERAL_STATUS, (char *)"No response from wifi card");
+      //        debugSerial.println(motd);
+    }
+  }
+
+  if ((currentMillis - networkUpTime) > NETWORK_DOWN_LIMIT)
+  {
+    resetWifi();
   }
 
   if (checkBackLight())
@@ -554,6 +555,25 @@ void readInputs(void)
     }
     changedState = 1;
   }
+}
+
+void resetWifi()
+{
+  //Drive LED orange to show resetting wifi
+  digitalWrite(RED_LED, HIGH);
+  digitalWrite(GREEN_LED, HIGH);
+  // Reset the wifi processor to reset the wifi card
+  digitalWrite(WIFI_RESET_PIN, LOW);
+  delay(500);
+  digitalWrite(WIFI_RESET_PIN, HIGH);
+  // Allow time for wifi card to restart
+  delay(RECONNECT_WAIT_TIME); // Give time for wifi to connect to AP
+  networkUp = true;           // Assume network is up unless shown otherwise
+  networkUpTime = millis();
+  lastNetworkCheckTime = networkUpTime;  
+  lastMessageCheck = millis();
+  //Set LED back to original setting
+  switchHeat(heatOn);
 }
 
 long calcHolidayTime()
@@ -684,6 +704,11 @@ bool getMotd()
 bool processMessage(uint8_t msgId)
 {
   bool msgRx = false;
+  if (msgId >= 0)
+  {
+    networkUpTime = currentMillis;
+    lastNetworkCheckTime = currentMillis;
+  }
   switch (msgId)
   {
   case 0:
@@ -734,6 +759,7 @@ bool processMessage(uint8_t msgId)
     deleteAllSchedules();
     break;
   case RESET_MSG:
+    resetWifi();
     resetFunc();
     break;
   }
@@ -811,7 +837,7 @@ void setHoliday()
   hols = &dtp->raw[0];
   eepromWrite(cnt, *hols++);
   cnt++;
-  changedState = 2;
+  changedState = 1;
 }
 
 void deleteAllSchedules()
@@ -1685,7 +1711,6 @@ int16_t waitForGetResponse()
     if (networkUp)
     {
       networkUp = false;
-      networkDownTime = currentMillis;
     }
   }
 
