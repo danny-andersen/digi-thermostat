@@ -435,6 +435,11 @@ void loop()
   if ((currentMillis - networkUpTime) > NETWORK_DOWN_LIMIT)
   {
     resetWifi();
+    if ((currentMillis - networkUp) >= (NETWORK_DOWN_LIMIT * 3))
+    {
+      // If third time reset wifi card then reset whole device
+      resetFunc();
+    }
   }
 
   if (checkBackLight())
@@ -559,7 +564,7 @@ void readInputs(void)
 
 void resetWifi()
 {
-  //Drive LED orange to show resetting wifi
+  // Drive LED orange to show resetting wifi
   digitalWrite(RED_LED, HIGH);
   digitalWrite(GREEN_LED, HIGH);
   // Reset the wifi processor to reset the wifi card
@@ -570,9 +575,9 @@ void resetWifi()
   delay(RECONNECT_WAIT_TIME); // Give time for wifi to connect to AP
   networkUp = true;           // Assume network is up unless shown otherwise
   networkUpTime = millis();
-  lastNetworkCheckTime = networkUpTime;  
+  lastNetworkCheckTime = networkUpTime;
   lastMessageCheck = millis();
-  //Set LED back to original setting
+  // Set LED back to original setting
   switchHeat(heatOn);
 }
 
@@ -592,6 +597,11 @@ void readLocalTemp()
   {
     // Temp looks sensible, use it (i.e. between 1 and 60 C)
     currentTemp = readTemp - LOCAL_TEMP_ADJUST; // Adjust for local temp reading compared to masterstation
+  }
+  else
+  {
+    // Temp not valid
+    currentTemp = 1000;
   }
 }
 

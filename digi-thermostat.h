@@ -76,7 +76,7 @@ char extTempStr[] = "exttemp";
 char motdStr[] = "motd";
 char holidayStr[] = "holiday";
 
-#define NETWORK_DOWN_LIMIT 900000UL   // Wait 15 mins for Network to come up otherwise reboot
+#define NETWORK_DOWN_LIMIT 900000UL    // Wait 15 mins for Network to come up otherwise reboot
 #define NETWORK_CHECK_INTERVAL 30000UL // Check network up every 30secs when down
 bool networkUp = false;
 bool rxInFail = false;
