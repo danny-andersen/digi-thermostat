@@ -205,27 +205,33 @@ humid="FAIL"
 if [ -f temperature.new ]
 then
     temp=$(cat temperature.new)
-    oldtemp=$(cat temperature.txt)
-    if [ $oldtemp != $temp ]
+    if [ $temp != -100 ]
     then
-        echo $temp > temperature.txt
-        time=$(date +%H%M)
-        echo ${time}":Temp:"${temp} >> $filename
-        uploadStatus=Y
+        oldtemp=$(cat temperature.txt)
+        if [ $oldtemp != $temp ]
+        then
+            echo $temp > temperature.txt
+            time=$(date +%H%M)
+            echo ${time}":Temp:"${temp} >> $filename
+            uploadStatus=Y
+        fi
     fi
 fi
 if [ -f humidity.new ]
 then
-    oldhumid=$(cat humidity.txt)
     humid=$(cat humidity.new)
-    #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
-    humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
-    if [ $oldhumid != $humidity ]
+    if [ $humid != -100 ]
     then
-        echo $humidity > humidity.txt
-        time=$(date +%H%M)
-        echo ${time}":Humidity:"${humidity} >> $filename
-        uploadStatus=Y
+        oldhumid=$(cat humidity.txt)
+        #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
+        humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
+        if [ $oldhumid != $humidity ]
+        then
+            echo $humidity > humidity.txt
+            time=$(date +%H%M)
+            echo ${time}":Humidity:"${humidity} >> $filename
+            uploadStatus=Y
+        fi
     fi
 fi
 

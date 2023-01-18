@@ -256,13 +256,11 @@ def getTemp():
     # This caters for the fact that reading from these can be slow (seconds)
     # and so allows the web server to read the file quickly and respond quickly
     (temp, humid) = readTemp()
-    if temp != 1:
-        # Write out temps to be used by masterstation and scripts
-        with (open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f):
-            f.write(f"{temp:.1f}\n")
-    if humid != -1:
-        with (open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f):
-            f.write(f"{humid:.1f}\n")
+    # Write out temps to be used by masterstation and scripts
+    with (open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f):
+        f.write(f"{temp:.1f}\n")
+    with (open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f):
+        f.write(f"{humid:.1f}\n")
 
 
 def runScript():

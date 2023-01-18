@@ -32,7 +32,7 @@ def readDHTTemp():
     if gotValue:
         return (temperature, humidity)
     else:
-        return (-1, -1)
+        return (-100, -100)
 
 
 def readTemp():
