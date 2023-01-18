@@ -205,7 +205,7 @@ humid="FAIL"
 if [ -f temperature.new ]
 then
     temp=$(cat temperature.new)
-    if [ $temp != -100 ]
+    if [ $temp != "-100.0" ]
     then
         oldtemp=$(cat temperature.txt)
         if [ $oldtemp != $temp ]
@@ -220,7 +220,7 @@ fi
 if [ -f humidity.new ]
 then
     humid=$(cat humidity.new)
-    if [ $humid != -100 ]
+    if [ $humid != "-100.0" ]
     then
         oldhumid=$(cat humidity.txt)
         #Round to nearest integer (as humidity changes alot at 0.1% accuracy)

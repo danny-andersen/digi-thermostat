@@ -14,11 +14,11 @@ def readDHTTemp():
     retryCount = 0
     gotValue = False
     # Try reading the device three times
-    while not gotValue and retryCount < 4:
+    while not gotValue and retryCount < 5:
         retryCount += 1
         try:
-            dht_device.measure()
-            sleep(2)
+            # dht_device.measure()
+            # sleep(2)
             humidity = dht_device.humidity
             temperature = dht_device.temperature
             if humidity is not None and temperature is not None:
@@ -37,8 +37,8 @@ def readDHTTemp():
 
 def readTemp():
     (temp, humidity) = readDHTTemp()
-    if temp == -1:
-        # Failed to read temp from humidity sensor, try thermometer
+    if temp == -100:
+        print("Failed to read temp from humidity sensor, trying thermometer\n")
         if path.exists(THERM_FILE):
             with open(THERM_FILE, "r", encoding="utf-8") as f:
                 str = f.readline()
