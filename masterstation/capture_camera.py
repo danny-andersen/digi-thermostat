@@ -175,9 +175,9 @@ def noOneHome():
 
     # Also register no one home if between 2300 and 0500
     # This ensures that capture is running overnight
-    # nowTime = datetime.now()
-    # if nowTime.hour > 23 or nowTime.hour < 5:
-    #     noOneHome = True
+    nowTime = datetime.now()
+    if nowTime.hour > 23 or nowTime.hour < 5:
+        noOneHome = True
     return noOneHome
 
 
