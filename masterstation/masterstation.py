@@ -1,4 +1,3 @@
-import re
 from flask import *
 from uwsgidecorators import *
 from ctypes import *
@@ -15,6 +14,7 @@ import crcmod.predefined
 from filelock import FileLock, Timeout
 
 from capture_camera import monitorAndRecord
+from humidity_sensor import readTemp
 
 MAX_MESSAGE_SIZE = 128
 MAX_WIND_SIZE = 12
@@ -43,10 +43,15 @@ EXTTEMP_FILE = "setExtTemp.txt"
 HOLIDAY_FILE = "holiday.txt"
 SET_TEMP_FILE = "setTemp.txt"
 STATUS_FILE = "status.txt"
-THERM_FILE = "/sys/bus/w1/devices/28-051673fdeeff/w1_slave"
-# THERM_FILE = "w1_slave"
 STATION_FILE = "-context.json"
 RESET_FILE = "resetReq.txt"
+TEMPERATURE_FILE_NEW = "../monitor_home/temperature.new"
+HUMIDITY_FILE_NEW = "../monitor_home/humidity.new"
+TEMPERATURE_FILE = "../monitor_home/temperature.txt"
+HUMIDITY_FILE = "../monitor_home/humidity.txt"
+MONITOR_SCRIPT = "/home/danny/digi-thermostat/monitor_home/get_lan_devices.sh"
+MONITOR_PERIOD = 30  # number of seconds between running monitor script
+TEMP_PERIOD = 30  # number of seconds between reading temp + humidty
 
 EXT_TEMP_EXPIRY_SECS = 3600  # an hour
 SET_TEMP_EXPIRY_SECS = 30 * 60  # 30 mins
@@ -175,7 +180,8 @@ class StationContext:
     currentSetTemp = 0.0  # current set temp
     currentBoilerStatus = 0.0  # off
     currentPirStatus = 0  # off
-    currentTemp = 0.0
+    currentTemp: float = 0.0
+    currentHumidity: float = 0.0
     currentExtTemp = 1000.0
     noOfSchedules = 0
 
@@ -230,6 +236,7 @@ class StationContext:
             and self.currentPirStatus == other.currentPirStatus
             and self.currentSetTemp == other.currentSetTemp
             and self.currentTemp == other.currentTemp
+            and self.currentHumidity == other.currentHumidity
             and self.extTempTime == other.extTempTime
             and self.motdExpiry == other.motdExpiry
             and self.motdTime == other.motdTime
@@ -244,22 +251,43 @@ class StationContext:
         )
 
 
-MONITOR_SCRIPT = "/home/danny/digi-thermostat/monitor_home/get_lan_devices.sh"
-MONITOR_TIME = 30  # number of seconds between running monitor script
+def getTemp():
+    # Read temp and humidity from sensor and write them to a file
+    # This caters for the fact that reading from these can be slow (seconds)
+    # and so allows the web server to read the file quickly and respond quickly
+    (temp, humid) = readTemp()
+    if temp != 1:
+        # Write out temps to be used by masterstation and scripts
+        with (open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f):
+            f.write(f"{temp:.1f}\n")
+    if humid != -1:
+        with (open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f):
+            f.write(f"{humid:.1f}\n")
+
+
+def runScript():
+    print("Running monitoring script")
+    subprocess.run(args=MONITOR_SCRIPT, shell=True)
 
 
 def runMonitorScript():
     print(f"******Starting monitor script thread loop {MONITOR_SCRIPT}")
-    # Wait until server up and running
+    lastTempTime = 0
+    lastMonitorTime = 0
     sleep(15)
+    # Wait until server up and running
     while True:
-        startTime = datetime.now().timestamp()
-        print("Running monitoring script")
-        subprocess.run(args=MONITOR_SCRIPT, shell=True)
-        endTime = datetime.now().timestamp()
-        elapsed = endTime - startTime
-        if elapsed < MONITOR_TIME:
-            sleep(MONITOR_TIME - elapsed)
+        nowTime = datetime.now().timestamp()
+        if (nowTime - lastTempTime) > TEMP_PERIOD:
+            # Read temp and humidity and update latest files
+            lastTempTime = nowTime
+            getTemp()
+        nowTime = datetime.now().timestamp()
+        if (nowTime - lastMonitorTime) > MONITOR_PERIOD:
+            # Run the monitor script
+            lastMonitorTime = nowTime
+            runScript()
+        sleep(1)
 
 
 lock = FileLock("monitor_thread.lock")
@@ -305,28 +333,35 @@ def getMessageEnvelope(id, content: bytearray, len):
     return bytearray(msg) + content
 
 
-def readThermStr():
-    temp = -1000
-    if path.exists(THERM_FILE):
-        with open(THERM_FILE, "r", encoding="utf-8") as f:
+def retrieveTempValue(primary, secondary):
+    retValue: float = -1000.0
+    try:
+        with open(primary, "r", encoding="utf-8") as f:
             str = f.readline()
-            # print(f"Temp 1st str: {str}")
-            strLen = len(str)
-            if str and strLen > 4 and str[strLen - 4] == "Y":
-                # Temp reading is good
-                try:
-                    str = f.readline()
-                    # print(f"Temp 2nd str: {str}")
-                    temp = round(int(re.split("=", str)[1]) / 100)
-                except:
-                    print(f"Temp: Failed")
-                    pass
-    return temp
+            # Mulitply by 10 as temp in .1 degrees
+            retValue = float(str) * 10
+    except:
+        try:
+            with open(secondary, "r", encoding="utf-8") as f:
+                str = f.readline()
+                # print(f"Set temp str {str[:strLen-1]}")
+                # Mulitply by 10 as humidity in .1 degrees
+                retValue = float(str) * 10
+        except:
+            retValue = -1000.0
+    return retValue
 
 
-def createThermMsg(temp):
+def readThermStr():
+    # Read temp from temp file - use new file if it exist, otherwise use old file
+    temp = retrieveTempValue(TEMPERATURE_FILE_NEW, TEMPERATURE_FILE)
+    humidity = retrieveTempValue(HUMIDITY_FILE_NEW, HUMIDITY_FILE)
+    return (temp, humidity)
+
+
+def createThermMsg(temp: float):
     tempMsg = Temp()
-    tempMsg.temp = temp
+    tempMsg.temp = c_int16(int(temp))
     msgBytes = getMessageEnvelope(SET_THERM_TEMP_MSG, bytearray(tempMsg), sizeof(Temp))
     response = Response(response=msgBytes, mimetype="application/octet-stream")
     # print(f"Temp: {tempMsg.temp}")
@@ -339,6 +374,7 @@ def generateStatusFile(sc: StationContext):
     try:
         with open(STATUS_FILE, "w", encoding="utf-8") as statusf:
             statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
+            statusf.write(f"Current humidity: {sc.currentHumidity/10:0.1f}\n")
             statusf.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
             heatOn = "No" if sc.currentBoilerStatus == 0 else "Yes"
             statusf.write(f"Heat on? {heatOn}\n")
@@ -376,6 +412,7 @@ def getMessage():
         sc.setHolidayTime = 0
         sc.extTempTime = 0
         sc.setSchedTime = 0
+        sc.currentHumidity = 0
         sc.motdExpiry = MOTD_EXPIRY_SECS
         sc.scheduleMsgs = []
     temp = args.get("t", type=float)
@@ -441,8 +478,12 @@ def getMessage():
         response = getMotd(sc)
         sc.motdTime = stat(MOTD_FILE).st_mtime
     else:
-        temp = readThermStr()
-        if temp > -1000:
+        (temp, humidity) = readThermStr()
+        # TODO: Change thermostat and masterstation to return and display humidity (on top line?)
+        if humidity != -1000:
+            sc.currentHumidity = humidity
+        if temp != -1000:
+            sc.currentTemp = temp
             response = createThermMsg(temp)
         else:
             pass  # Do something else
@@ -566,7 +607,7 @@ def getSetTemp(sc: StationContext = None):
             try:
                 str = f.readline()
                 strLen = len(str)
-                print(f"Set temp str {str[:strLen-1]}")
+                # print(f"Set temp str {str[:strLen-1]}")
                 temp = c_int16(int(float(str[: strLen - 1]) * 10))
                 tempMsg.temp = temp
                 print(f"Set Temp {temp}")
@@ -651,14 +692,17 @@ def getExtTemp(sc: StationContext = None):
 
 @app.route("/temp", methods=["GET"])
 def getThermTemp(sc: StationContext = StationContext()):
+    # TODO: Change thermostat and masterstation to return and display humidity (on top line?)
     response: Response = None
-    temp = readThermStr()
-    if temp > -1000:
+    (temp, humidity) = readThermStr()
+    if temp != -1000:
         sc.currentTemp = temp
         response = createThermMsg(temp)
     else:
         print(f"No temp file")
         response = getNoMessage()
+    if humidity != -1000:
+        sc.currentHumidity = float(humidity)
     return response
 
 

@@ -200,23 +200,55 @@ then
 fi
 
 #Check up on temperature
-if [ -f ${sensor_dir}/temperature ]
+temp="FAIL"
+humid="FAIL"
+if [ -f temperature.new ]
 then
-    #temp=$(grep "t=" ${sensor_dir}/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
-    temp=$(cat ${sensor_dir}/temperature)
-    if [ ${#temp} -gt 3 ]
+    temp=$(cat temperature.new)
+    oldtemp=$(cat temperature.txt)
+    if [ $oldtemp != $temp ]
     then
-        temp=$(echo $temp | awk '{printf("%.1f\n", $1/1000.0)}')
-        oldtemp=$(cat temperature.txt)
-        if [ $oldtemp != $temp ]
-        then
-            echo $temp > temperature.txt
-    	    time=$(date +%H%M)
-     	    echo ${time}":Temp:"${temp} >> $filename
-	    uploadStatus=Y
-        fi
+        echo $temp > temperature.txt
+        time=$(date +%H%M)
+        echo ${time}":Temp:"${temp} >> $filename
+        uploadStatus=Y
     fi
 fi
+if [ -f humidity.new ]
+then
+    oldhumid=$(cat humidity.txt)
+    humid=$(cat humidity.new)
+    #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
+    humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
+    if [ $oldhumid != $humidity ]
+    then
+        echo $humidity > humidity.txt
+        time=$(date +%H%M)
+        echo ${time}":Humidity:"${humidity} >> $filename
+        uploadStatus=Y
+    fi
+fi
+
+# tempHumidity=$(python ../masterstation/humidity_sensor.py)
+# read -ra arr <<<"$tempHumidity"
+# if [ ${arr[0]} == "FAIL" ]
+# then
+#     #Use other temp sensor if available
+#     if [ -f ${sensor_dir}/temperature ]
+#     then
+#         #temp=$(grep "t=" ${sensor_dir}/w1_slave | awk '{print $10}' | awk -F= '{print $2}')
+#         temp=$(cat ${sensor_dir}/temperature)
+#         if [ ${#temp} -gt 3 ]
+#         then
+#             temp=$(echo $temp | awk '{printf("%.1f\n", $1/1000.0)}')
+#         else
+#             temp="FAIL"
+#         fi
+#     fi
+# else
+#     temp=${arr[0]}
+#     humid=${arr[1]}
+# fi
 
 #Record when boiler is on/off
 if [ -f ${masterstation}/status.txt ]
