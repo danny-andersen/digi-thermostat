@@ -401,9 +401,12 @@ def getMessage():
         sc: StationContext = StationContext()
     startContext = copy.deepcopy(sc)
     resend = args.get("rs", type=int)
-    if resend:
+    if resend > 0:
         # Thermostat has rebooted or reconnected - resend any messages
-        print(f"REBOOT OF STATION {sc.stationNo} DETECTED")
+        if resend == 1:
+            print(f"RESET OF STATION {sc.stationNo} DETECTED")
+        elif resend == 2:
+            print(f"WIFI RESET OF STATION {sc.stationNo} DETECTED")
         sc.motdTime = 0
         sc.tempMotdTime = 0
         sc.setTempTime = 0

@@ -1,8 +1,8 @@
 #include <Wire.h>
 #include <uRTCLib.h>
 
-#include <DallasTemperature.h>
 #include <OneWire.h>
+#include <DallasTemperature.h>
 
 // #include <LiquidCrystal.h>
 // #include <LiquidCrystal_I2C.h>
@@ -95,10 +95,7 @@ char lcdBuff[LCD_COLS + 1];               // Buffer used to display and scroll m
 int8_t scrollPos = 0;
 uint8_t changedState = 0; // Whether a state change has happened that should be display (1=display, 2=clear screen before displaying)
 
-// bool networkDown = true;
-// bool serverDown = true;
-// bool msgFail = true;
-bool resendMessages = true;
+uint8_t resendMessages = 1; // 1 = indicates a reboot, 2 = wifi reset only
 
 void (*resetFunc)(void) = 0; // declare reset fuction at address 0
 
@@ -149,6 +146,7 @@ void setup()
 
   temp_sensor.begin();
   readLocalTemp();
+  currentSentThermTemp = currentTemp;
 
   //  RTCLib::set(byte second, byte minute, byte hour, byte dayOfWeek, byte dayOfMonth, byte month, byte year)
   //  rtc.set(0,45, 15, 5, 3, 2, 17);
@@ -217,6 +215,7 @@ void setup()
   networkUp = true;           // Assume network is up unless shown otherwise
   networkUpTime = millis();
   lastNetworkCheckTime = networkUpTime;
+  resendMessages = 1;
   // Turn power led RED to indicate running
 
   digitalWrite(GREEN_LED, LOW);
@@ -267,9 +266,9 @@ void loop()
   }
 
   // Read thermometer if not got remote reading
-  if (currentMillis - lastThermTempTime > RX_TEMP_INTERVAL)
+  if ((currentMillis - lastThermTempTime) > RX_TEMP_INTERVAL)
   {
-    if (currentMillis - lastTempRead > TEMPERATURE_READ_INTERVAL)
+    if ((currentMillis - lastTempRead) > TEMPERATURE_READ_INTERVAL)
     {
       readLocalTemp();
       //  Serial.println("Temperature for Device 1 is: " + String(currentTemp, 1));
@@ -435,7 +434,7 @@ void loop()
   if ((currentMillis - networkUpTime) > NETWORK_DOWN_LIMIT)
   {
     resetWifi();
-    if ((currentMillis - networkUp) >= (NETWORK_DOWN_LIMIT * 3))
+    if ((currentMillis - networkUpTime) >= (NETWORK_DOWN_LIMIT * 3))
     {
       // If third time reset wifi card then reset whole device
       resetFunc();
@@ -569,14 +568,14 @@ void resetWifi()
   digitalWrite(GREEN_LED, HIGH);
   // Reset the wifi processor to reset the wifi card
   digitalWrite(WIFI_RESET_PIN, LOW);
-  delay(500);
+  delay(1000);
   digitalWrite(WIFI_RESET_PIN, HIGH);
   // Allow time for wifi card to restart
   delay(RECONNECT_WAIT_TIME); // Give time for wifi to connect to AP
   networkUp = true;           // Assume network is up unless shown otherwise
   networkUpTime = millis();
   lastNetworkCheckTime = networkUpTime;
-  lastMessageCheck = millis();
+  resendMessages = 2; // Flag that wifi card has been reset
   // Set LED back to original setting
   switchHeat(heatOn);
 }
@@ -1573,6 +1572,7 @@ uint8_t sendMessage(char msg[])
 int8_t getStatusResponse(bool upOnly)
 {
   unsigned long start = millis();
+  unsigned long lastByteTime = start;
   uint16_t bufPos = 0;
   unsigned long waitTime = 0;
   bool gotResponse = false;
@@ -1582,6 +1582,7 @@ int8_t getStatusResponse(bool upOnly)
     uint16_t len = receiveData(bufPos);
     if (len > 0)
     {
+      lastByteTime = millis();
       bufPos += len;
       if (success == -1)
       {
@@ -1619,7 +1620,7 @@ int8_t getStatusResponse(bool upOnly)
       // Wait for a bit for the next bytes to arrive
       delay(10);
     }
-    waitTime = millis() - start;
+    waitTime = millis() - lastByteTime; // Timeout if not received a byte for max wait time
   }
   if (!gotResponse)
   {
@@ -1718,10 +1719,7 @@ int16_t waitForGetResponse()
   {
     lastMessageCheck = currentMillis; // reset message check timer
     rxInFail = true;
-    if (networkUp)
-    {
-      networkUp = false;
-    }
+    networkUp = false;
   }
 
   return msgLen;
