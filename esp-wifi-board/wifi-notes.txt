@@ -14,6 +14,14 @@ Pin 2 - TXD > RX [Arduino pin 1 or pin 10]
 Pin 7 - RXD > TX [Arduino pin 0 or pin 11] (via divider)
 GPIO0 - Normal mode > unconnected
 
-Also Try:
+Use at 9600 baud:
 SoftwareSerial mySerial(10, 11); // RX, TX
 
+Get next message command:
+*G<len>message?s=%d&rs=%d&t=%d&st=%d&r=%d&p=%d
+Examples:
+*G39message?s=5&rs=0&t=1000&st=1000&r=0&p=0
+*G08datetime
+*G04motd
+*G04temp
+*G07exttemp
