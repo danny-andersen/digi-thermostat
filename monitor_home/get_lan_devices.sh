@@ -14,7 +14,7 @@ function upload_images {
 #Start
 cd "$(dirname "$0")"
 
-filename=$(date +%Y%m%d)"_device_change.txt"
+device_change_file=$(date +%Y%m%d)"_device_change.txt"
 sensor_dir=/sys/bus/w1/devices/28-051673fdeeff
 masterstation=../masterstation
 video_picture_dir=motion_images/
@@ -54,10 +54,43 @@ then
       sudo /sbin/shutdown -r now
 fi
 
-> lan_devices.new
-#rm host_list.html
-#wget -O host_list.html 192.168.1.1 
-#./parse_html.sh host_list.html | grep -v "^Active" | grep -v "^No" | grep -v "^Disabled" > lan_devices.txt
+# > lan_devices.new
+# #rm host_list.html
+# #wget -O host_list.html 192.168.1.1 
+# #./parse_html.sh host_list.html | grep -v "^Active" | grep -v "^No" | grep -v "^Disabled" > lan_devices.txt
+
+# dev=$(echo $safeDevice | sed 's/|/ /g')
+# for d in $dev
+# do
+# 	ping -c2 $d > /dev/null 2>&1
+# 	if [ $? == 0 ]
+# 	then
+# 		echo $d >> lan_devices.new
+# 	fi
+# done	
+
+# diff -q lan_devices.new lan_devices.txt >/dev/null
+# if [ $? -eq 1 ]
+# then
+#     #Find new devices and add to device change file
+#     >tmpdiff
+# 	newDevs=`diff lan_devices.new lan_devices.txt | grep '<' | awk '{print $2}'`
+#   	dateStr=`date +%H%M`
+#     for dev in $newDevs
+#     do
+#         echo $dateStr':Device:New:'$dev >>tmpdiff
+#     done
+#     #Find removed devices and add to device change file
+# 	goneDevs=`diff lan_devices.new lan_devices.txt | grep '>' | awk '{print $2}'`
+#     for dev in $goneDevs
+#     do
+#         echo $dateStr':Device:Gone:'$dev >>tmpdiff
+#     done
+# 	cat tmpdiff >> $device_change_file
+#     cp lan_devices.new lan_devices.txt
+# 	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt > /dev/null 2>&1
+# 	uploadStatus=Y
+# fi
 
 dev=$(echo $safeDevice | sed 's/|/ /g')
 for d in $dev
@@ -65,32 +98,26 @@ do
 	ping -c2 $d > /dev/null 2>&1
 	if [ $? == 0 ]
 	then
-		echo $d >> lan_devices.new
+        grep -q $d lan_devices.txt
+        if [ $? == 1 ]
+        then
+            # Device not listed - add
+    		echo $d >> lan_devices.txt
+            echo $dateStr':Device:New:'$dev > $device_change_file
+         	uploadStatus=Y
+        fi
+    else
+        grep -q $d lan_devices.txt
+        if [ $? == 0 ]
+        then
+            #Device no longer found - remove
+            grep -v $d lan_devices.txt > lan_devices.new
+            mv lan_devices.new lan_devices.txt
+            echo $dateStr':Device:Gone:'$dev > $device_change_file
+         	uploadStatus=Y
+        fi
 	fi
 done	
-
-diff -q lan_devices.new lan_devices.txt >/dev/null
-if [ $? -eq 1 ]
-then
-    #Find new devices and add to device change file
-    >tmpdiff
-	newDevs=`diff lan_devices.new lan_devices.txt | grep '<' | awk '{print $2}'`
-  	dateStr=`date +%H%M`
-    for dev in $newDevs
-    do
-        echo $dateStr':Device:New:'$dev >>tmpdiff
-    done
-    #Find removed devices and add to device change file
-	goneDevs=`diff lan_devices.new lan_devices.txt | grep '>' | awk '{print $2}'`
-    for dev in $goneDevs
-    do
-        echo $dateStr':Device:Gone:'$dev >>tmpdiff
-    done
-	cat tmpdiff >> $filename
-    cp lan_devices.new lan_devices.txt
-	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt > /dev/null 2>&1
-	uploadStatus=Y
-fi
 
 diff -q ${masterstation}/status.txt thermostat_status.txt >/dev/null
 if [ $? -eq 1 ]
@@ -202,34 +229,34 @@ fi
 #Check up on temperature
 temp="FAIL"
 humid="FAIL"
-if [ -f temperature.new ]
+if [ -f temp_avg.txt ]
 then
-    temp=$(cat temperature.new)
+    temp=$(cat temp_avg.txt)
     if [ $temp != "-100.0" ]
     then
-        oldtemp=$(cat temperature.txt)
+        oldtemp=$(cat temp_avg.old)
         if [ $oldtemp != $temp ]
         then
-            echo $temp > temperature.txt
+            echo $temp > temp_avg.old
             time=$(date +%H%M)
-            echo ${time}":Temp:"${temp} >> $filename
+            echo ${time}":Temp:"${temp} >> $device_change_file
             uploadStatus=Y
         fi
     fi
 fi
-if [ -f humidity.new ]
+if [ -f humidity_avg.txt ]
 then
-    humid=$(cat humidity.new)
-    if [ $humid != "-100.0" ]
+    humid=$(cat humidity_avg.txt)
+    if [ $humid != "-100" ]
     then
-        oldhumid=$(cat humidity.txt)
+        oldhumid=$(cat humidity_avg.old)
         #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
-        humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
-        if [ $oldhumid != $humidity ]
+        # humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
+        if [ $oldhumid != $humid ]
         then
-            echo $humidity > humidity.txt
+            echo $humid > humidity_avg.old
             time=$(date +%H%M)
-            echo ${time}":Humidity:"${humidity} >> $filename
+            echo ${time}":Humidity:"${humid} >> $device_change_file
             uploadStatus=Y
         fi
     fi
@@ -271,13 +298,13 @@ then
 	else
 		state='Off'
 	fi
-    	echo ${time}":Boiler:"${state} >> $filename
+    	echo ${time}":Boiler:"${state} >> $device_change_file
 	uploadStatus=Y
     fi
 fi
 
 if [ ${uploadStatus} = "Y" ]
 then
-    ./dropbox_uploader.sh upload $filename $filename > /dev/null 2>&1
+    ./dropbox_uploader.sh upload $device_change_file $device_change_file > /dev/null 2>&1
 fi
 

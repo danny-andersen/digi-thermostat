@@ -45,10 +45,19 @@ SET_TEMP_FILE = "setTemp.txt"
 STATUS_FILE = "status.txt"
 STATION_FILE = "-context.json"
 RESET_FILE = "resetReq.txt"
-TEMPERATURE_FILE_NEW = "../monitor_home/temperature.new"
-HUMIDITY_FILE_NEW = "../monitor_home/humidity.new"
-TEMPERATURE_FILE = "../monitor_home/temperature.txt"
-HUMIDITY_FILE = "../monitor_home/humidity.txt"
+TEMPERATURE_FILE_NEW = "../monitor_home/temperature.txt"
+HUMIDITY_FILE_NEW = "../monitor_home/humidity.txt"
+TEMPERATURE_FILE = "../monitor_home/temp_avg.txt"
+HUMIDITY_FILE = "../monitor_home/humidity_avg.txt"
+TEMP_AVERAGE_MIN = (
+    5  # Number of mins at which to average temp over for historic change file
+)
+TEMP_AVG_FILE = "../monitor_home/temp_avg.txt"
+HUMID_AVERAGE_MIN = (
+    15  # Number of mins at which to average humidity over for historic change file
+)
+HUMID_AVG_FILE = "../monitor_home/humidity_avg.txt"
+
 MONITOR_SCRIPT = "/home/danny/digi-thermostat/monitor_home/get_lan_devices.sh"
 MONITOR_PERIOD = 30  # number of seconds between running monitor script
 TEMP_PERIOD = 30  # number of seconds between reading temp + humidty
@@ -251,16 +260,76 @@ class StationContext:
         )
 
 
-def getTemp():
+def getTemp(history: tuple[dict[int, float], dict[int, float]]):
     # Read temp and humidity from sensor and write them to a file
     # This caters for the fact that reading from these can be slow (seconds)
     # and so allows the web server to read the file quickly and respond quickly
     (temp, humid) = readTemp()
-    # Write out temps to be used by masterstation and scripts
+    # Write out temps to be used by masterstation
     with (open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f):
         f.write(f"{temp:.1f}\n")
     with (open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f):
         f.write(f"{humid:.1f}\n")
+    # Create a rolling 5 min average for temp and humidity to be used by history
+    now = datetime.now()
+    (histTempD, histHumidD) = history
+    min = now.minute % TEMP_AVERAGE_MIN
+    histTemp = histTempD.get(min, -100)
+    if histTemp == -100:
+        histTempD[min] = temp
+    else:
+        histTempD[min] = (temp + histTemp) / 2
+    min = now.minute % TEMP_AVERAGE_MIN
+    histHumid = histHumidD.get(min, -100)
+    if histHumid == -100:
+        histHumidD[min] = humid
+    else:
+        histHumidD[min] = (humid + histHumid) / 2
+    if min == 0:
+        # Calculate temp average
+        totalTemp = 0.0
+        vals = 0
+        for i in range(0, TEMP_AVERAGE_MIN):
+            t = histTempD.get(i, -100)
+            if t != -100:
+                totalTemp += t
+                vals += 1
+            if i != 0:
+                histTempD[i] = -100
+        if vals > 1:
+            # Only process if it is first time processing this minute
+            avgTemp = totalTemp / vals
+            with (open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f):
+                f.write(f"{avgTemp:.1f}\n")
+        elif vals == 0:
+            avgTemp = -100  # No measurement made in period
+            with (open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f):
+                f.write(f"{avgTemp:.1f}\n")
+    min = now.minute % HUMID_AVERAGE_MIN
+    histHumid = histHumidD.get(min, -100)
+    if histHumid == -100:
+        histHumidD[min] = humid
+    else:
+        histHumidD[min] = (humid + histHumid) / 2
+    if min == 0:
+        # Calculate humid average
+        totalHumid = 0.0
+        vals = 0
+        for i in range(0, HUMID_AVERAGE_MIN):
+            h = histHumidD.get(i, -100)
+            if h != -100:
+                totalHumid += h
+                vals += 1
+            histHumidD[i] = -100
+        if vals > 1:
+            # Only process if it is first time processing this minute
+            avgHumid = totalHumid / vals
+            with (open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f):
+                f.write(f"{avgHumid:.0f}\n")
+        elif vals == 0:
+            avgHumid = -100  # No measurement made in period
+            with (open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f):
+                f.write(f"{avgHumid:.10f}\n")
 
 
 def runScript():
@@ -273,13 +342,14 @@ def runMonitorScript():
     lastTempTime = 0
     lastMonitorTime = 0
     sleep(15)
+    history: tuple[dict[int, float], dict[int, float]] = (dict(), dict())
     # Wait until server up and running
     while True:
         nowTime = datetime.now().timestamp()
         if (nowTime - lastTempTime) > TEMP_PERIOD:
             # Read temp and humidity and update latest files
             lastTempTime = nowTime
-            getTemp()
+            getTemp(history)
         nowTime = datetime.now().timestamp()
         if (nowTime - lastMonitorTime) > MONITOR_PERIOD:
             # Run the monitor script
