@@ -102,25 +102,25 @@ if __name__ == "__main__":
                     if weatherText[int(rep.get("W"))] != weatherText[nowWeather]:
                         nextForecast = rep
                         nextWeather = int(rep.get("W"))
-        if day.get("value") == tomorrow:
-            mins = 24 * 60 - nowMins
-            for rep in day.findall("Rep"):
-                if int(rep.text) + 180 < int(forecast.text):
-                    # Look in tomorrows forecast up to 3 hours before current time
-                    if precipTime == None and int(rep.get("Pp")) > rainThreshold:
-                        # Rain more likely than not
-                        precipTime = rep
-                    if stopRaining == None and int(rep.get("Pp")) <= rainThreshold:
-                        # Rain stopping
-                        stopRaining = rep
-                    if nextTemp == -255:
-                        nextTemp = int(rep.get("T"))
-                    if (
-                        nextWeather == -1
-                        and weatherText[int(rep.get("W"))] != weatherText[nowWeather]
-                    ):
-                        nextForecast = rep
-                        nextWeather = int(rep.get("W"))
+        # if day.get("value") == tomorrow:
+        #     mins = 24 * 60 - nowMins
+        #     for rep in day.findall("Rep"):
+        #         if int(rep.text) + 180 < int(forecast.text):
+        #             # Look in tomorrows forecast up to 3 hours before current time
+        #             if precipTime == None and int(rep.get("Pp")) > rainThreshold:
+        #                 # Rain more likely than not
+        #                 precipTime = rep
+        #             if stopRaining == None and int(rep.get("Pp")) <= rainThreshold:
+        #                 # Rain stopping
+        #                 stopRaining = rep
+        #             if nextTemp == -255:
+        #                 nextTemp = int(rep.get("T"))
+        #             if (
+        #                 nextWeather == -1
+        #                 and weatherText[int(rep.get("W"))] != weatherText[nowWeather]
+        #             ):
+        #                 nextForecast = rep
+        #                 nextWeather = int(rep.get("W"))
     # print nextWeather, day.get('value'), today, tomorrow
     if int(forecast.text) > nowMins or inTomorrow:
         # Forecast is in the future - use its temperature
@@ -140,12 +140,18 @@ if __name__ == "__main__":
     # print weatherText[nowWeather], weatherText[nextWeather]
     # print precipTime.text, precipTime.get('Pp')
     # print stopRaining.text, stopRaining.get('Pp')
-    nextTime = int(nextForecast.text) / 60
+    nextTime = -1
+    if nextForecast:
+        nextTime = int(nextForecast.text) / 60
     rainProb = int(forecast.get("Pp"))
     rainStr = ""
     if rainProb > rainThreshold or nowWeather >= rainIfOver:
         rainStr = f" {rainProb}%"
-    forecastText = f"{weatherText[nowWeather]}{rainStr} until {nextTime:.0f}00"
+    if nextTime >= 0:
+        forecastText = f"{weatherText[nowWeather]}{rainStr} until {nextTime :.0f}00"
+    else:
+        forecastText = f"{weatherText[nowWeather]}{rainStr} all day!"
+
     # Currently not raining (probably)
     if rainProb <= rainThreshold and precipTime != None:
         rainTime = int(precipTime.text) / 60
@@ -154,7 +160,7 @@ if __name__ == "__main__":
             precipTime.get("Pp"),
             rainTime,
         )
-    else:
+    elif nextForecast:
         rainProb = int(nextForecast.get("Pp"))
         rainStr = ""
         if rainProb > rainThreshold or nextWeather >= rainIfOver:
@@ -174,10 +180,14 @@ if __name__ == "__main__":
         elif setDelta <= 2:
             forecastText = "Sunset at %s, %s" % (sunset, forecastText)
 
-    if now.hour > nextTime:
-        expiry = (24 - now.hour + nextTime) * 3600 * 1000
+    if nextTime >= 0:
+        if now.hour > nextTime:
+            expiry = (24 - now.hour + nextTime) * 3600 * 1000
+        else:
+            expiry = (nextTime - now.hour) * 3600 * 1000
     else:
-        expiry = (nextTime - now.hour) * 3600 * 1000
+        # If no next forecast, expire after two hours
+        expiry = 2 * 3600 * 1000
 
     # print forecastText, expiry
     # print wind, temp
