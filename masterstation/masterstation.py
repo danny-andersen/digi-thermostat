@@ -559,9 +559,9 @@ def getMessage():
         else:
             pass  # Do something else
 
-    if sc.saveStationContext(startContext):
-        # Generate status file if context has changed
-        generateStatusFile(sc)
+    sc.saveStationContext(startContext)
+    # Always generate status file to update last heard time
+    generateStatusFile(sc)
 
     return response
 
@@ -701,7 +701,7 @@ def getSetTemp(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
-        generateStatusFile(sc)
+    generateStatusFile(sc)
 
     return response
 
@@ -756,7 +756,7 @@ def getExtTemp(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
-        generateStatusFile(sc)
+    generateStatusFile(sc)
 
     return response
 
@@ -840,7 +840,7 @@ def getHoliday(sc: StationContext = None):
         response = getNoMessage()
     if changed:
         sc.saveStationContext()
-        generateStatusFile(sc)
+    generateStatusFile(sc)
 
     return response
 
