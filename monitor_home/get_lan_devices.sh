@@ -103,7 +103,14 @@ do
         then
             # Device not listed - add
     		echo $d >> lan_devices.txt
-            echo $dateStr':Device:New:'$dev > $device_change_file
+            echo $dateStr':Device:New:'$dev >> $device_change_file
+         	uploadStatus=Y
+        fi
+        grep -q $d $device_change_file
+        if [ $? == 1 ]
+        then
+            # Device not in change file (probably as new day)
+            echo $dateStr':Device:New:'$dev >> $device_change_file
          	uploadStatus=Y
         fi
     else
@@ -113,7 +120,7 @@ do
             #Device no longer found - remove
             grep -v $d lan_devices.txt > lan_devices.new
             mv lan_devices.new lan_devices.txt
-            echo $dateStr':Device:Gone:'$dev > $device_change_file
+            echo $dateStr':Device:Gone:'$dev >> $device_change_file
          	uploadStatus=Y
         fi
 	fi
