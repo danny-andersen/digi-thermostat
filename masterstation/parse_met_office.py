@@ -122,12 +122,13 @@ if __name__ == "__main__":
         #                 nextForecast = rep
         #                 nextWeather = int(rep.get("W"))
     # print nextWeather, day.get('value'), today, tomorrow
-    if int(forecast.text) > nowMins or inTomorrow:
+    if int(forecast.text) > nowMins or inTomorrow or nextTemp == -255:
         # Forecast is in the future - use its temperature
         temp = int(forecast.get("T"))
     else:
         # Forecast is in the past - use average of it and next temperature
         temp = (int(forecast.get("T")) + nextTemp) / 2.0
+
     wind = f"{forecast.get('S')}-{forecast.get('G')}mph"
     dirn = forecast.get("D")
     if len(dirn) + len(wind) >= 10:
