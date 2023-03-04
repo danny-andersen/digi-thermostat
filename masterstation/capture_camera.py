@@ -94,8 +94,8 @@ class Camera:
                 ],
             )
             webCamProc.start()
-            webCamProc.join()
-        cameraProcess.join()
+            webCamProc.join(timeout=10)
+        cameraProcess.join(timeout=10)
 
     def takeVideo(self, dateStr: str):
         # Take videos in parallel using Process
@@ -114,8 +114,8 @@ class Camera:
                 ],
             )
             webCamProc.start()
-            webCamProc.join()
-        cameraProcess.join()
+            webCamProc.join(timeout=30)
+        cameraProcess.join(timeout=30)
 
     def wrapH264(self, videoName: str):
         mp4cmd: list = self.mp4ConvStr.split()
