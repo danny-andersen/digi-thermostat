@@ -85,7 +85,7 @@ fi
 #     for dev in $goneDevs
 #     do
 #         echo $dateStr':Device:Gone:'$dev >>tmpdiff
-#     done
+#     done  
 # 	cat tmpdiff >> $device_change_file
 #     cp lan_devices.new lan_devices.txt
 # 	./dropbox_uploader.sh upload lan_devices.txt lan_devices.txt > /dev/null 2>&1
@@ -98,29 +98,34 @@ do
 	ping -c2 $d > /dev/null 2>&1
 	if [ $? == 0 ]
 	then
+        #Device on network
         grep -q $d lan_devices.txt
         if [ $? == 1 ]
         then
             # Device not listed - add
     		echo $d >> lan_devices.txt
-            echo $dateStr':Device:New:'$dev >> $device_change_file
+          	dateStr=`date +%H%M`
+            echo $dateStr':Device:New:'$d >> $device_change_file
          	uploadStatus=Y
         fi
         grep -q $d $device_change_file
         if [ $? == 1 ]
         then
             # Device not in change file (probably as new day)
-            echo $dateStr':Device:New:'$dev >> $device_change_file
+          	dateStr=`date +%H%M`
+            echo $dateStr':Device:New:'$d >> $device_change_file
          	uploadStatus=Y
         fi
     else
+        #Device not on network
         grep -q $d lan_devices.txt
         if [ $? == 0 ]
         then
             #Device no longer found - remove
             grep -v $d lan_devices.txt > lan_devices.new
             mv lan_devices.new lan_devices.txt
-            echo $dateStr':Device:Gone:'$dev >> $device_change_file
+          	dateStr=`date +%H%M`
+            echo $dateStr':Device:Gone:'$d >> $device_change_file
          	uploadStatus=Y
         fi
 	fi
