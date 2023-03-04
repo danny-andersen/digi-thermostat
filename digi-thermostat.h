@@ -36,6 +36,9 @@
 #define SET_INTERVAL 1           // Amount to increase the temp by, per button press
 #define HOLIDAY_SET_TIME 30000UL // 1min to manually set period to go into holiday mode using dial
 #define BACKLIGHT_TIME 30000UL   // 30s time to leave on once PIR triggered
+#define MAX_SET_TEMP 250         // 25C is maximum settable temperature
+#define MIN_SET_TEMP 80          // 8C is the minium settable temperature (frost protection)
+#define DEFAULT_SET_TEMP 100     // 10C is the default temp if no other temp set or a malfunction
 
 #define LCD_ROWS 4
 #define LCD_COLS 20

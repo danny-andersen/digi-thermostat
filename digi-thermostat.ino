@@ -41,7 +41,7 @@ int16_t currentTemp = 1000;
 int16_t currentSentThermTemp = 1000;
 int16_t manHolidayTemp = 1000;
 int16_t lastScheduledTemp = 1000;
-volatile int16_t currentSetTemp = 0;
+int16_t currentSetTemp = DEFAULT_SET_TEMP; // Default to 10.0C
 byte noOfSchedules = 0;
 boolean isDefaultSchedule = false;
 SchedUnion defaultSchedule;
@@ -340,6 +340,14 @@ void loop()
   readInputs();
 
   // Turn heating on or off depending on temp
+  if (currentSetTemp > MAX_SET_TEMP)
+  {
+    currentSetTemp = DEFAULT_SET_TEMP; // This is a guardrail to stop heating coming on if there is a malfunction or memory issue
+  }
+  if (currentSetTemp < MIN_SET_TEMP)
+  {
+    currentSetTemp = DEFAULT_SET_TEMP; // This is a guardrail to prevent a very low temp being set if there is a malfunction or memory issue
+  }
   if ((currentSetTemp > currentTemp) && !heatOn)
   {
     switchHeat(true);
@@ -512,6 +520,10 @@ void intHandlerRotaryA()
       else // This is manually increasing the temp
       {
         currentSetTemp = currentSetTemp + SET_INTERVAL;
+        if (currentSetTemp > MAX_SET_TEMP)
+        {
+          currentSetTemp = MAX_SET_TEMP;
+        }
       }
     }
   }
@@ -537,6 +549,10 @@ void intHandlerRotaryB()
       else // This is manually decreasing the temp
       {
         currentSetTemp = currentSetTemp - SET_INTERVAL;
+        if (currentSetTemp < MIN_SET_TEMP)
+        {
+          currentSetTemp = MIN_SET_TEMP;
+        }
       }
     }
   }
@@ -802,9 +818,13 @@ void setThermTemp()
 void setSetTemp()
 {
   Temp *tp = (Temp *)&buff[4]; // Start of content
-  currentSetTemp = tp->temp;
-  manHolidayTemp = tp->temp;
-  changedState = 1;
+  if (tp->temp <= MAX_SET_TEMP && tp->temp >= MIN_SET_TEMP)
+  {
+    // Only use if its set to something sensible, otherwise ignore
+    currentSetTemp = tp->temp;
+    manHolidayTemp = tp->temp;
+    changedState = 1;
+  }
 }
 
 void setExtTemp()
