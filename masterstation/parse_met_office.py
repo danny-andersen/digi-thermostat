@@ -142,7 +142,7 @@ if __name__ == "__main__":
     # print precipTime.text, precipTime.get('Pp')
     # print stopRaining.text, stopRaining.get('Pp')
     nextTime = -1
-    if nextForecast:
+    if nextForecast != None:
         nextTime = int(nextForecast.text) / 60
     rainProb = int(forecast.get("Pp"))
     rainStr = ""
@@ -156,12 +156,11 @@ if __name__ == "__main__":
     # Currently not raining (probably)
     if rainProb <= rainThreshold and precipTime != None:
         rainTime = int(precipTime.text) / 60
-        forecastText += ". %s (%s%%) at %0d00" % (
-            weatherText[int(precipTime.get("W"))],
+        forecastText += ". Rain (%s%%) at %0d00" % (
             precipTime.get("Pp"),
             rainTime,
         )
-    elif nextForecast:
+    elif nextForecast != None:
         rainProb = int(nextForecast.get("Pp"))
         rainStr = ""
         if rainProb > rainThreshold or nextWeather >= rainIfOver:
