@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "args": [
-                "masterstation/test-files/met-forecast2.xml"
+                "masterstation/test-files/met-forecast3.xml"
             ]
         }
     ]
