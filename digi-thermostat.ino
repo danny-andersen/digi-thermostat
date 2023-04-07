@@ -160,49 +160,15 @@ void setup()
   lcd.display();
   lcd.setBacklight(255);
 
-  // Read schedule from EEPROM
-  // Note: Max position: 32767
-  // First byte is number of schedules
-  noOfSchedules = eepromRead(0);
-  //  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
-  if (noOfSchedules > MAX_SCHEDULES)
-  {
-    // Assume eprom corrupted
-    eepromWrite(0, 0x00);
-    noOfSchedules = 0;
-  }
-  int cnt = 1;
-  for (int i = 0; i < noOfSchedules; i++)
-  {
-    for (int j = 0; j < sizeof(SchedByElem); j++)
-    {
-      schedules[i][j] = eepromRead(cnt);
-      cnt++;
-    }
-  }
-  if (noOfSchedules == 0)
-  {
-    addDefaultSchedule();
-  }
-
-  holiday.elem.valid = 0;
-  // Go to end of schedule storage area and see if a holiday has been stored
-  cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
-  if (eepromRead(cnt) == 1)
-  {
-    // Holiday has been set
-    cnt++;
-    holiday.raw[0] = eepromRead(cnt);
-    cnt++;
-  }
-  //  Serial.println("holiday? " + String(holiday.elem.valid) + " start day: " + String(holiday.elem.startDate.dayOfMonth));
+  readSchedules();
 
   setDefaultMotd();
 
   // Get the time and current set temp
   rtc.refresh();
   currentSched.elem.start = 1500;
-  currentSched.elem.temp = 100;
+  currentSched.elem.temp = DEFAULT_SET_TEMP;
+
   // Done set up
 
   // Connect to the network
@@ -340,14 +306,13 @@ void loop()
   readInputs();
 
   // Turn heating on or off depending on temp
-  if (currentSetTemp > MAX_SET_TEMP)
+  if (currentSetTemp > MAX_SET_TEMP || currentSetTemp < MIN_SET_TEMP)
   {
+    // Corrupt temp being set - could be memory corruption, read schedule in from EEPROM
+    readSchedules();
     currentSetTemp = DEFAULT_SET_TEMP; // This is a guardrail to stop heating coming on if there is a malfunction or memory issue
   }
-  if (currentSetTemp < MIN_SET_TEMP)
-  {
-    currentSetTemp = DEFAULT_SET_TEMP; // This is a guardrail to prevent a very low temp being set if there is a malfunction or memory issue
-  }
+
   if ((currentSetTemp > currentTemp) && !heatOn)
   {
     switchHeat(true);
@@ -575,6 +540,46 @@ void readInputs(void)
     }
     changedState = 1;
   }
+}
+
+void readSchedules()
+{
+  // Read schedule from EEPROM
+  // Note: Max position: 32767
+  // First byte is number of schedules
+  noOfSchedules = eepromRead(0);
+  //  Serial.println("No of scheds: " + String(noOfSchedules, HEX));
+  if (noOfSchedules > MAX_SCHEDULES)
+  {
+    // Assume eprom corrupted
+    eepromWrite(0, 0x00);
+    noOfSchedules = 0;
+  }
+  int cnt = 1;
+  for (int i = 0; i < noOfSchedules; i++)
+  {
+    for (int j = 0; j < sizeof(SchedByElem); j++)
+    {
+      schedules[i][j] = eepromRead(cnt);
+      cnt++;
+    }
+  }
+  if (noOfSchedules == 0)
+  {
+    addDefaultSchedule();
+  }
+
+  holiday.elem.valid = 0;
+  // Go to end of schedule storage area and see if a holiday has been stored
+  cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
+  if (eepromRead(cnt) == 1)
+  {
+    // Holiday has been set
+    cnt++;
+    holiday.raw[0] = eepromRead(cnt);
+    cnt++;
+  }
+  //  Serial.println("holiday? " + String(holiday.elem.valid) + " start day: " + String(holiday.elem.startDate.dayOfMonth));
 }
 
 void resetWifi()
@@ -904,46 +909,6 @@ void setSchedule()
   eepromWrite(0, noOfSchedules);
 }
 
-// case (ADJ_SETTIME_CONST_MSG):
-//     degPerHour = payload.adjSetTimeConstants.degPerHour;
-//     extAdjustment = payload.adjSetTimeConstants.extAdjustment;
-//     changedState = 1;
-//   break;
-// case (MOTD_MSG):
-//   break;
-// case (GET_SCHEDULES_MSG):
-//     //Send each schedule in the list
-//     respHeader.type = SCHEDULE_MSG;
-//     for (int i=0; i<noOfSchedules; i++) {
-//       memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
-//       response.schedule.day = sched.elem.day;
-//       response.schedule.start = sched.elem.start;
-//       response.schedule.end = sched.elem.end;
-//       response.schedule.temp = sched.elem.temp;
-//       //Send to master
-//       network.write(respHeader, &response, sizeof(Content));
-//       delay(100);
-//     }
-//   break;
-// case (DELETE_SCHEDULE_MSG):
-//     int schedToDelete;
-//     schedToDelete = noOfSchedules+1;
-//     for (int i=0; i<noOfSchedules; i++) {
-//       memcpy(&sched.raw, &schedules[i], sizeof(SchedByElem));
-//       //Find matching schedule
-//       if (sched.elem.day == payload.schedule.day
-//          && sched.elem.start == payload.schedule.start
-//          && sched.elem.end == payload.schedule.end
-//          && sched.elem.temp == payload.schedule.temp) {
-//           schedToDelete = i;
-//       }
-//     }
-//     //Delete matching schedule by shuffling them up
-//     for (int i=schedToDelete; i<(noOfSchedules-1); i++) {
-//       memcpy(&schedules[i], &schedules[i++], sizeof(SchedByElem));
-//     }
-//   break;
-
 void displayState()
 {
   // Display current status
@@ -1071,19 +1036,8 @@ void displayState()
   // Pad with spaces
   lcdBuff[len] = '\0';
   uint8_t iLen = MAX_WIND_SIZE - 1;
-  while (strlen(lcdBuff) < iLen)
-  {
-    lcdBuff[len] = ' ';
-    len++;
-    lcdBuff[len] = '\0';
-  }
-  // int i;
-  // i = strlen(boilerStatStr);
-  // while (strlen(lcdBuff) < MAX_WIND_SIZE - 1) {
-  //   lcdBuff[len] = ' ';
-  //   len++;
-  //   lcdBuff[len] = '\0';
-  // }
+  len = pad(lcdBuff, len, iLen);
+
   String extTempStr = getTempStr(extTemp);
   extTempStr.toCharArray(tempStr, TEMP_SIZE);
   sprintf(&lcdBuff[len], "Ext:%sC", tempStr);
@@ -1097,8 +1051,20 @@ void displayState()
     lcd.setCursor(0, 3);
     // Serial.println(motd);
     // delay(100);
+    pad(motd, strlen(motd), LCD_COLS);
     lcd.print(motd); // Only print here if motd fits, otherwise needs to scroll
   }
+}
+
+uint8_t pad(char *buff, uint8_t offset, uint8_t ilen)
+{
+  while (strlen(buff) < ilen)
+  {
+    buff[offset] = ' ';
+    offset++;
+    buff[offset] = '\0';
+  }
+  return offset;
 }
 
 void scrollLcd()
@@ -1401,7 +1367,7 @@ void getFutureTime(long tms, char *charBuf, uint8_t len)
   {
     hours -= 24;
   }
-  snprintf(charBuf, len, "%02d%02d  ", hours, mins);
+  snprintf(charBuf, len, "%02d%02d       ", hours, mins);
 }
 
 void getHoursMins(unsigned long tmins, char *charBuf)
