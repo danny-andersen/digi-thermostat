@@ -99,7 +99,10 @@ if __name__ == "__main__":
                     # Rain stopping
                     if stopRaining == None and int(rep.get("Pp")) <= rainThreshold:
                         stopRaining = rep
-                    if weatherText[int(rep.get("W"))] != weatherText[nowWeather]:
+                    if (
+                        nextForecast == None
+                        and weatherText[int(rep.get("W"))] != weatherText[nowWeather]
+                    ):
                         nextForecast = rep
                         nextWeather = int(rep.get("W"))
         # if day.get("value") == tomorrow:
@@ -147,7 +150,7 @@ if __name__ == "__main__":
     rainProb = int(forecast.get("Pp"))
     rainStr = ""
     if rainProb > rainThreshold or nowWeather >= rainIfOver:
-        rainStr = f" {rainProb}%"
+        rainStr = f" ({rainProb}%)"
     if nextTime >= 0:
         forecastText = f"{weatherText[nowWeather]}{rainStr} until {nextTime :.0f}00"
     else:
