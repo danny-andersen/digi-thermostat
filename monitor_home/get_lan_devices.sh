@@ -4,8 +4,9 @@ function upload_images {
     then
         for file in $*
         do
-            ./dropbox_uploader.sh upload $file $file
-            rm $file
+            mod_date=$(date -r "$video_picture_dir/$file" +%Y-%m-%d)
+            ./dropbox_uploader.sh upload $video_picture_dir/$file $video_picture_dir/$mod_date/$file
+            rm $video_picture_dir/$file
         done
     fi
 }
@@ -213,11 +214,11 @@ fi
 # fi
 
 #Upload any video or photo not uploaded and delete file
-files=$(find $video_picture_dir -name "*.jpeg" -mmin +0)
+files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.jpeg" -mmin +0)
 upload_images $files
-files=$(find $video_picture_dir -name "*.mp4" -mmin +0)
+files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.mp4" -mmin +0)
 upload_images $files
-files=$(find $video_picture_dir -name "*.mpeg" -mmin +0)
+files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.mpeg" -mmin +0)
 upload_images $files
 
 mins=$(date +%M)
