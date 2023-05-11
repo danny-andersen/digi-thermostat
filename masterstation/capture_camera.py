@@ -23,11 +23,13 @@ class Camera:
     photoFilenamePi: str = "-piphoto.jpeg"
     photoFilenameWeb: str = "-webphoto.jpeg"
     videoFilename: str = "-pioutput"
-    videoFilenameWeb: str = "-weboutput.mpeg"
+    videoFilenameWeb: str = "-weboutput.mp4"
 
     # TODO move these to a seperate config txt file
-    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -r 3.0 -frames 1 -y -loglevel error"
-    ffmegVideo = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -frames 375 -r 25 -loglevel error"  # 15 seconds of video at 25fps
+    ffmegStr = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -r 3.0 -frames 1 -y -loglevel error"  # Webcam photo
+    ffmegVideo = "ffmpeg -f v4l2 -video_size 720x576 -i /dev/video0 -frames 45 -r 3 -loglevel error"  # 15 seconds of video at 3fps
+    # ffmegVideo = "ffmpeg -f v4l2 -video_size 1280x720 -i /dev/video0 -frames 375 -r 25 -loglevel error"  # 15 seconds of video at 25fps
+    # ffmegVideo = "ffmpeg -c:v libx264 -c:a aac -video_size 1280x720 -i /dev/video0 -frames 45 -r 3 -loglevel error"  # 15 seconds of video at 25fps
     mp4ConvStr = "MP4Box -add"
 
     def __init__(self, web_cam_on: bool, camera: PiCamera = None):
