@@ -217,12 +217,12 @@ fi
 # fi
 
 #Upload any video or photo not uploaded and delete file
-files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.jpeg")
+files=$(find $video_picture_dir -type f -name "*.jpeg" -printf "%f\n")
 upload_images $files
-files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.mp4")
+files=$(find $video_picture_dir -type f -name "*.mp4" -printf "%f\n")
 upload_images $files
-files=$(find $video_picture_dir -type f -printf "%f\n" -name "*.mpeg")
-upload_images $files
+# files=$(find $video_picture_dir -type f -name "*.mpeg" -printf "%f\n")
+# upload_images $files
 
 mins=$(date +%M)
 
