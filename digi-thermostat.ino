@@ -526,7 +526,7 @@ void intHandlerRotaryB()
 
 void readInputs(void)
 {
-  if (holidayButton.update() && holidayButton.fell())
+  if (!onHoliday && holidayButton.update() && holidayButton.fell())
   {
     if (holidaySetTimer == 0)
     {
