@@ -128,6 +128,7 @@ struct Motd
 struct Temp
 {
   int16_t temp;
+  int16_t humidity;
 };
 
 struct SetExt

@@ -39,6 +39,7 @@ SoftwareSerial wifiSerial(WIFI_RX, WIFI_TX); // RX, TX
 // Global variables and stuff to initate once
 int16_t currentTemp = 1000;
 int16_t currentSentThermTemp = 1000;
+int16_t currentSentHumidity = 2000;
 int16_t manHolidayTemp = 1000;
 int16_t lastScheduledTemp = 1000;
 int16_t currentSetTemp = DEFAULT_SET_TEMP; // Default to 10.0C
@@ -199,6 +200,11 @@ void loop()
     // Read RTC
     rtc.refresh();
     lastRTCRead = currentMillis;
+    if (rtc.hour() == 0 && rtc.minute() == 0 && rtc.second() == 0)
+    {
+      // At midnight, re-read the schedules from eeprom, in case of any memory corruption
+      readSchedules();
+    }
     changedState = 1;
   }
   //  Serial.print(getDateStr());
@@ -234,6 +240,7 @@ void loop()
   // Read thermometer if not got remote reading
   if ((currentMillis - lastThermTempTime) > RX_TEMP_INTERVAL)
   {
+    //Remote temp reading timed out - use local
     if ((currentMillis - lastTempRead) > TEMPERATURE_READ_INTERVAL)
     {
       readLocalTemp();
@@ -242,6 +249,8 @@ void loop()
       changedState = 1;
       boilerRunTime = getRunTime();
     }
+    //Reset sent humidity as well
+    currentSentHumidity = 2000;
   }
   else
   {
@@ -812,8 +821,13 @@ void setThermTemp()
   Temp *tp = (Temp *)&buff[4]; // Start of content
   if (tp->temp > 10 && tp->temp < 500)
   {
-    // Rx Temp looks sensible, use it
+    // Rx Temp looks sensible (1-50 C), use it
     currentSentThermTemp = tp->temp;
+  }
+  if (tp->humidity >= 0 && tp->humidity <= 1000) 
+  {
+    // Rx Humidity looks sensible (0- 100%), use it
+    currentSentHumidity = tp->humidity;
   }
   lastThermTempTime = currentMillis;
   boilerRunTime = getRunTime();
@@ -988,39 +1002,50 @@ void displayState()
   lcd.print(lcdBuff);
   // lcd.print(String(runTimeStr) + " Set:" + tempStr);
 
+  //Display Row 3 - Alternate between the Wind speed, Humidity and Boiler run time if boiler on, followed by the external temp
   lcd.setCursor(0, 2);
   uint8_t len = 0;
   uint8_t wlen = strlen(windStr);
+  char humidStr[] = "RH : %s%%";
   char run[] = "Run: MM:SS ";
-  if (wlen != 0 && boilerRunTime != 0)
+  // if (wlen != 0 && boilerRunTime != 0 && currentSentHumidity != 2000)
+  // {
+  if (rtc.second() % 3 && wlen != 0)
   {
-    if (rtc.second() % 2)
-    {
-      // display wind speed
-      len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
-    }
-    else
-    {
+    // display wind speed every 3 seconds
+    len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
+  }
+  else if (rtc.second() % 2 && currentSentHumidity != 2000)
+  {
+    //Display Humidity
+    String humid = getTempStr(currentSentHumidity);
+    humid.toCharArray(tempStr, TEMP_SIZE);
+    len = snprintf(lcdBuff, 11, humidStr, tempStr);
+  }
+  else if (boilerRunTime != 0) 
+  {
       // Boiler is on - display how long for on row 2
       getMinSec(boilerRunTime, &run[5]);
       // strncat(runTimeStr, &run[0], strlen(run));
       len = snprintf(lcdBuff, 11, "%s", run);
       // strncat(&runTimeStr[8], sp, 1);
       //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
-    }
   }
-  else if (wlen != 0)
+  else if ((rtc.second()+1) % 3 && currentSentHumidity != 2000)
   {
-    // display wind speed
+    //Display Humidity for 2 secs if boiler off
+    String humid = getTempStr(currentSentHumidity);
+    humid.toCharArray(tempStr, TEMP_SIZE);
+    len = snprintf(lcdBuff, 11, humidStr, tempStr);
+  }
+  else if ((rtc.second()+1) % 2 && wlen != 0)
+  {
+    // display wind speed for 2 secs if bpiler off
     len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
-  }
-  else if (boilerRunTime != 0)
-  {
-    getMinSec(boilerRunTime, &run[5]);
-    len = snprintf(lcdBuff, 11, "%s", run);
   }
   else
   {
+    //Show default
     char bs[] = "Heat : %s";
     char on[] = "ON  ";
     char off[] = "OFF ";

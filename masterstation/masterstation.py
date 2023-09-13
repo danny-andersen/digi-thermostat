@@ -84,7 +84,10 @@ class SetExt(Structure):
 
 
 class Temp(Structure):
-    _fields_ = [("temp", c_short)]
+    _fields_ = [
+        ("temp", c_short),
+        ("humidity", c_short),
+    ]
 
 
 class AdjSetTimeConstants(Structure):
@@ -266,9 +269,9 @@ def getTemp(history: tuple[dict[int, float], dict[int, float]]):
     # and so allows the web server to read the file quickly and respond quickly
     (temp, humid) = readTemp()
     # Write out temps to be used by masterstation
-    with (open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f):
+    with open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f:
         f.write(f"{temp:.1f}\n")
-    with (open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f):
+    with open(HUMIDITY_FILE_NEW, mode="w", encoding="utf-8") as f:
         f.write(f"{humid:.1f}\n")
     # Create a rolling 5 min average for temp and humidity to be used by history
     now = datetime.now()
@@ -299,11 +302,11 @@ def getTemp(history: tuple[dict[int, float], dict[int, float]]):
         if vals > 1:
             # Only process if it is first time processing this minute
             avgTemp = totalTemp / vals
-            with (open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f):
+            with open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f:
                 f.write(f"{avgTemp:.1f}\n")
         elif vals == 0:
             avgTemp = -100  # No measurement made in period
-            with (open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f):
+            with open(TEMP_AVG_FILE, mode="w", encoding="utf-8") as f:
                 f.write(f"{avgTemp:.1f}\n")
     min = now.minute % HUMID_AVERAGE_MIN
     histHumid = histHumidD.get(min, -100)
@@ -324,11 +327,11 @@ def getTemp(history: tuple[dict[int, float], dict[int, float]]):
         if vals > 1:
             # Only process if it is first time processing this minute
             avgHumid = totalHumid / vals
-            with (open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f):
+            with open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f:
                 f.write(f"{avgHumid:.0f}\n")
         elif vals == 0:
             avgHumid = -100  # No measurement made in period
-            with (open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f):
+            with open(HUMID_AVG_FILE, mode="w", encoding="utf-8") as f:
                 f.write(f"{avgHumid:.10f}\n")
 
 
@@ -427,9 +430,10 @@ def readThermStr():
     return (temp, humidity)
 
 
-def createThermMsg(temp: float):
+def createThermMsg(temp: float, humidity: float):
     tempMsg = Temp()
     tempMsg.temp = c_int16(int(temp))
+    tempMsg.humidity = c_int16(int(humidity))
     msgBytes = getMessageEnvelope(SET_THERM_TEMP_MSG, bytearray(tempMsg), sizeof(Temp))
     response = Response(response=msgBytes, mimetype="application/octet-stream")
     # print(f"Temp: {tempMsg.temp}")
@@ -555,7 +559,7 @@ def getMessage():
             sc.currentHumidity = humidity
         if temp != -1000:
             sc.currentTemp = temp
-            response = createThermMsg(temp)
+            response = createThermMsg(temp, humidity)
         else:
             pass  # Do something else
 
@@ -640,6 +644,7 @@ def createMotd(str, motdExpiry=TEMP_MOTD_EXPIRY_SECS * 1000):
     strLen = len(str) if len(str) < MAX_MOTD_SIZE - 1 else MAX_MOTD_SIZE - 1
     motdStr = bytes(str[:strLen], encoding="utf-8")
     motdLen = len(motdStr) + 1
+
     # print(f"Str len; {strLen}")
     class Motd(Structure):
         _fields_ = [
@@ -768,7 +773,7 @@ def getThermTemp(sc: StationContext = StationContext()):
     (temp, humidity) = readThermStr()
     if temp != -1000:
         sc.currentTemp = temp
-        response = createThermMsg(temp)
+        response = createThermMsg(temp, humidity)
     else:
         print(f"No temp file")
         response = getNoMessage()
