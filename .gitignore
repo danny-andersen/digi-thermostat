@@ -44,4 +44,6 @@ suntimes.txt
 
 #Private flies
 esp-wifi-board/wifi.h
-safeDevices.txt
+monitor_home/safeDevices.txt
+wifi-test/http_get_test.ino
+wifi-test/wifi_connect_test.ino

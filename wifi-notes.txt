@@ -1,0 +1,19 @@
+Current RF24 uses pins D9 (CE), D10 (CS), D11 (MOSI), D12 (MISO)
+
+Wifi module could use D9 + D10 as RX + TX for Software Serial. Limited baud rate though
+But only pins 2 + 3 support interrupts so cant use for Software Serial??
+
+So we can only use pins 0 + 1 for Tx and Rx to ESP, which is the same as the USB port.
+
+Need a 10K and 20K resistor divider from Tx to Rx of ESP (or 180 Ohms + 330)
+
+Pin 1 - GND > GND 
+Pin 8 - VCC > +3.3V 
+Pin 4 - CHPD > +3.3V 
+Pin 2 - TXD > RX [Arduino pin 1 or pin 10] 
+Pin 7 - RXD > TX [Arduino pin 0 or pin 11] (via divider)
+GPIO0 - Normal mode > unconnected
+
+Also Try:
+SoftwareSerial mySerial(10, 11); // RX, TX
+
