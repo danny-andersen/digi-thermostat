@@ -20,12 +20,15 @@ def readDHTTemp():
             # dht_device.measure()
             # sleep(2)
             humidity = dht_device.humidity
+            # print(f"Humidity: {humidity}")
             temperature = dht_device.temperature
+            # print(f"Temp: {temperature}")
             if humidity is not None and temperature is not None:
                 gotValue = True
             else:
-                sleep(2)
+                sleep(1)
         except RuntimeError as re:
+            # print(re)
             sleep(2)
     dht_device.exit()
 

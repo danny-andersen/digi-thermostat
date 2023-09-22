@@ -1,0 +1,12 @@
+[Unit]
+Description=Camera station to monitor security camera and external temperature
+
+[Service]
+#Environment= MY_ENVIRONMENT_VAR =/path/to/file.config
+WorkingDirectory=/home/danny/camera_station
+ExecStart=python /home/danny/camera_station/camera_station.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
