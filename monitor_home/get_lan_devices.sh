@@ -251,7 +251,9 @@ then
     if [ $temp != "-100.0" ]
     then
         oldtemp=$(cat temp_avg.old)
-        if [ $oldtemp != $temp ]
+        grep -q ":Temp:" $device_change_file
+        tempInStatus=$?
+        if [ $oldtemp != $temp ] || [ $tempInStatus != 0 ]
         then
             echo $temp > temp_avg.old
             time=$(date +%H%M)
@@ -266,9 +268,11 @@ then
     if [ $humid != "-100" ]
     then
         oldhumid=$(cat humidity_avg.old)
+        grep -q ":Humidity:" $device_change_file
+        humidInStatus=$?
         #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
         # humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
-        if [ $oldhumid != $humid ]
+        if [ $oldhumid != $humid ] || [ $humidInStatus != 0 ]
         then
             echo $humid > humidity_avg.old
             time=$(date +%H%M)

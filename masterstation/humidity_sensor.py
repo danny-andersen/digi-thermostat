@@ -59,8 +59,8 @@ def readTemp():
     return (temp, humidity)
 
 
-(temperature, humidity) = readTemp()
-if temperature != -1:
-    print(f"{temperature:0.1f} {humidity:0.1f}")
-else:
-    print("FAIL")
+# (temperature, humidity) = readTemp()
+# if temperature != -1:
+#     print(f"{temperature:0.1f} {humidity:0.1f}")
+# else:
+#     print("FAIL")

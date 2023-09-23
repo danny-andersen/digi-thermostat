@@ -2,6 +2,7 @@
 function upload_images {
     if [ $# -gt 0 ]
     then
+        echo Uploading $# media files
         for file in $*
         do
             if ! fuser "$video_picture_dir/$file"; then
@@ -19,10 +20,11 @@ function upload_images {
 cd "$(dirname "$0")"
 
 device_change_file=$(date +%Y%m%d)"_cam${1}_change.txt"
-video_picture_dir=${2}
+video_picture_dir=$2
 uploadStatus=N
 COMMAND_FILE=command-cam${1}.txt
 
+# echo Running check status with ${1} and $2
 #Check wifi up
 ping -c2 192.168.1.1 > /dev/null
 if [ $? == 0 ]
@@ -56,6 +58,7 @@ then
       sudo /sbin/shutdown -r now
 fi
 
+# echo "Downloading command file"
 ./dropbox_uploader.sh download COMMAND_FILE command.txt > /dev/null 2>&1
 if [ -f command.txt ]
 then
@@ -85,6 +88,7 @@ then
 	sudo service motion start
 fi
 
+# echo "Looking for media files and uploading"
 #Upload any video or photo not uploaded and delete file
 files=$(find $video_picture_dir -type f -name "*.jpeg" -printf "%f\n")
 upload_images $files
@@ -109,7 +113,9 @@ then
             cp temp_avg.txt temp_avg.old
         fi
         oldtemp=$(cat temp_avg.old)
-        if [ $oldtemp != $temp ]
+        grep -q ":Temp:" $device_change_file
+        tempInStatus=$?
+        if [ $oldtemp != $temp ] || [ $tempInStatus != 0 ]
         then
             echo $temp > temp_avg.old
             time=$(date +%H%M)
@@ -128,9 +134,11 @@ then
             cp humidity_avg.txt humidity_avg.old
         fi
         oldhumid=$(cat humidity_avg.old)
+        grep -q ":Humidity:" $device_change_file
+        humidInStatus=$?
         #Round to nearest integer (as humidity changes alot at 0.1% accuracy)
         # humidity=$(echo $humid | awk '{printf("%.0f\n", $1)}')
-        if [ $oldhumid != $humid ]
+        if [ $oldhumid != $humid ] || [ $humidInStatus != 0 ]
         then
             echo $humid > humidity_avg.old
             time=$(date +%H%M)

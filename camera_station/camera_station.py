@@ -15,8 +15,9 @@ from humidity_sensor import readTemp
 
 CHECK_WIFI_SCRIPT = "./check_status.sh"
 
-# TODO: Convert to using pyton dropbox library rather than using status script
+# TODO: Convert to using pyton dropbox library rather than using status script to upload
 
+# TODO: Move these to .ini file
 TEMPERATURE_FILE_NEW = "temperature.txt"
 HUMIDITY_FILE_NEW = "humidity.txt"
 TEMPERATURE_FILE = "temp_avg.txt"
@@ -39,7 +40,7 @@ def getTemp(conf, hist: tuple[dict[int, float], dict[int, float]]):
     (temp, humid) = readTemp()
     # Send to Masterstation
     if temp != -100 and humid != -100:
-        sendMessage(conf, {"temp": temp * 10, "humidity": humid * 10})
+        sendMessage(conf, {"temp": int(temp * 10), "humidity": int(humid * 10)})
         # Write out temps to file to be used by check status (to be uploaded to dropbox)
         with open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f:
             f.write(f"{temp:.1f}\n")
@@ -129,12 +130,11 @@ def checkForMotionEvents(conf):
 
 
 def runScript(conf):
-    # print("Running status script")
     camera_num = conf["camera_num"]
     video_dir = conf["video_dir"]
-    subprocess.run(
-        args=[CHECK_WIFI_SCRIPT, camera_num, video_dir], shell=True, check=False
-    )
+    cmd = f"{CHECK_WIFI_SCRIPT} {camera_num} {video_dir}"
+    # print(f"Calling check script {cmd}")
+    subprocess.run(args=cmd, shell=True, check=False)
 
 
 def sendMessage(conf, args: dict[str, str]):
@@ -162,7 +162,12 @@ def sendMessage(conf, args: dict[str, str]):
         #         params.append(f"&h={value}")
     url = "".join(url_parts)
     # Send HTTP request with a 5 sec timeout
-    requests.get(url, timeout=5)
+    # print("Sending status update")
+    try:
+        resp = requests.get(url, timeout=5)
+        # print(f"Received response code {resp.status_code}")
+    except requests.exceptions.RequestException as re:
+        print(f"Failed to send message to masterstation {re}")
 
 
 if __name__ == "__main__":

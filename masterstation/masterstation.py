@@ -235,7 +235,7 @@ def getMessage():
         # No station number given - use default context
         sc: StationContext = StationContext()
     startContext = copy.deepcopy(sc)
-    resend = args.get("rs", type=int)
+    resend = args.get("rs", type=int, default=0)
     if resend > 0:
         # Thermostat has rebooted or reconnected - resend any messages
         if resend == 1:
@@ -260,14 +260,14 @@ def getMessage():
     therm = args.get("st", type=float)
     if therm:
         sc.currentSetTemp = therm
-    heat = args.get("r", type=int)
+    heat = args.get("r", type=int, default=0)
     if heat or (heat == 0 and sc.currentBoilerStatus > 0):
         sc.currentBoilerStatus = heat
-    pir = args.get("p", type=int)
+    pir = args.get("p", type=int, default=0)
     if (pir and not sc.currentPirStatus) or (not pir and sc.currentPirStatus):
         sc.currentPirStatus = pir
     response: Response = getNoMessage()
-    updateOnly = args.get("u", type=int)
+    updateOnly = args.get("u", type=int, default=0)
     if not updateOnly:
         if sc.motdExpiry < TEMP_MOTD_EXPIRY_SECS:
             sc.motdExpiry = TEMP_MOTD_EXPIRY_SECS  # Have a minimum expiry time
