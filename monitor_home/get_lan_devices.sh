@@ -135,12 +135,32 @@ do
 	fi
 done	
 
+if [ ! -f thermostat_status.txt ]
+then
+    >thermostat_status.txt
+fi
+
 diff -q ${masterstation}/status.txt thermostat_status.txt >/dev/null
 if [ $? -eq 1 ]
 then
 	# echo "Uploading changed thermostat status"
 	cp ${masterstation}/status.txt thermostat_status.txt
 	./dropbox_uploader.sh upload thermostat_status.txt thermostat_status.txt > /dev/null 2>&1
+fi
+
+if [ ! -f cam0_status.txt ]
+then
+    >cam0_status.txt
+fi
+
+diff -q ${masterstation}/2_status.txt cam0_status.txt >/dev/null
+if [ $? -eq 1 ]
+then
+	# echo "Uploading changed external status"
+	cp ${masterstation}/2_status.txt cam0_status.txt
+    #TODO: If multiple extermal status's, average the temp and RH and stick in external_status.txt
+	./dropbox_uploader.sh upload cam0_status.txt cam0_status.txt > /dev/null 2>&1
+	./dropbox_uploader.sh upload cam0_status.txt external_status.txt > /dev/null 2>&1
 fi
 
 ./dropbox_uploader.sh download command.txt command.txt > /dev/null 2>&1

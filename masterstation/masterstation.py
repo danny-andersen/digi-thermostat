@@ -451,10 +451,9 @@ def getSetTemp(sc: StationContext = None):
     if path.exists(SET_TEMP_FILE):
         with open(SET_TEMP_FILE, "r", encoding="utf-8") as f:
             try:
-                str = f.readline()
-                strLen = len(str)
+                tempStr = f.readline()
                 # print(f"Set temp str {str[:strLen-1]}")
-                temp = c_int16(int(float(str[: strLen - 1]) * 10))
+                temp = c_int16(int(float(tempStr) * 10))
                 tempMsg.temp = temp
                 print(f"Set Temp {temp}")
                 msgBytes = getMessageEnvelope(
