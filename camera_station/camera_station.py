@@ -123,7 +123,7 @@ def checkForMotionEvents(conf):
     # If there is a file in the motion directory, it signifies that a motion event is underway
     video_dir = conf["video_dir"]
     # Check for any mpg files
-    mpgs = fnmatch.filter(listdir(video_dir), "*.mpg")
+    mpgs = fnmatch.filter(listdir(video_dir), "*.mp4")
     if len(mpgs):
         # Tell masterstation an event is happening
         sendMessage(conf, {"pir": "1"})
