@@ -199,14 +199,26 @@ def createThermMsg(temp: float, humidity: float):
 def generateStatusFile(sc: StationContext):
     # print("Generate status file")
     now: datetime = datetime.now()
+    setExtTemp = False
     try:
         if sc.stationNo == 1:
             statusFile = STATUS_FILE
         else:
             statusFile = f"{sc.stationNo}_{STATUS_FILE}"
+            setExtTemp = True  # External thermometer
 
         with open(statusFile, "w", encoding="utf-8") as statusf:
-            statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
+            if sc.currentTemp < 1000:
+                statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
+                # if setExtTemp:
+                #     with open(EXTTEMP_FILE, "r", encoding="utf-8") as extf:
+                #         windStr = extf.readlines()[1]
+                #     # Write temp to ext temp file for downloading to thermostat
+                #     with open(EXTTEMP_FILE, "w", encoding="utf-8") as extf:
+                #         extf.write(f"{sc.currentTemp/10:0.1f}\n")
+                #         extf.write(windStr)
+            else:
+                statusf.write("External temp: Not Set\n")
             statusf.write(f"Current humidity: {sc.currentHumidity/10:0.1f}\n")
             statusf.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
             heatOn = "No" if sc.currentBoilerStatus == 0 else "Yes"
