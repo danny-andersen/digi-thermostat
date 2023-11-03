@@ -65,7 +65,7 @@ def readTemp(tempOnly: bool = False):
                     try:
                         s = f.readline()
                         # print(f"Temp 2nd str: {str}")
-                        temp = round(int(re.split("=", s)[1]) / 1000)
+                        temp = round(int(re.split("=", s)[1]) / 100) / 10
                     except:
                         print("Temp: Failed")
                         pass
