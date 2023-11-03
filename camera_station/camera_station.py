@@ -33,13 +33,14 @@ HUMID_AVG_FILE = "humidity_avg.txt"
 
 MONITOR_PERIOD = 30  # number of seconds between running monitor script
 TEMP_PERIOD = 30  # number of seconds between reading temp + humidty
+TEMP_ONLY = False  # Whether to only read the temperature (DS18B20 device) or both humidity and temp (DHT22)
 
 
 def getTemp(conf, hist: tuple[dict[int, float], dict[int, float]]):
     # Read temp and humidity from sensor and then send them to the masterstation
-    (temp, humid) = readTemp()
+    (temp, humid) = readTemp(TEMP_ONLY)
     # Send to Masterstation
-    if temp != -100 and humid != -100:
+    if temp != -100:
         sendMessage(conf, {"temp": int(temp * 10), "humidity": int(humid * 10)})
         # Write out temps to file to be used by check status (to be uploaded to dropbox)
         with open(TEMPERATURE_FILE_NEW, mode="w", encoding="utf-8") as f:

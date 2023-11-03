@@ -1,15 +1,17 @@
 from time import sleep
 from os import stat, path, remove
+import glob
 import re
 
 import adafruit_dht
 from board import D18
 
-THERM_FILE = "/sys/bus/w1/devices/28-051673fdeeff/w1_slave"
+THERM_FILE = "/sys/bus/w1/devices/28*/w1_slave"
 # THERM_FILE = "w1_slave"
 
 
 def readDHTTemp():
+    # Read DHT22 device
     dht_device = adafruit_dht.DHT22(pin=D18, use_pulseio=False)
     retryCount = 0
     gotValue = False
@@ -38,23 +40,34 @@ def readDHTTemp():
         return (-100, -100)
 
 
-def readTemp():
-    (temp, humidity) = readDHTTemp()
-    if temp == -100:
-        print("Failed to read temp from humidity sensor, trying thermometer\n")
-        if path.exists(THERM_FILE):
-            with open(THERM_FILE, "r", encoding="utf-8") as f:
-                str = f.readline()
+def readTemp(tempOnly: bool = False):
+    if not tempOnly:
+        (temp, humidity) = readDHTTemp()
+        if temp < -20 or humidity == 100:
+            # print("Failed to read temp from humidity sensor, trying thermometer\n")
+            # Cant trust DHT reading, use thermometer
+            temp = -100
+            humidity = -100
+    else:
+        humidity = -100
+    if tempOnly or temp == -100:
+        # Try DS18B20 one-wire device
+        temp = -100
+        therms = glob.glob(THERM_FILE)
+        if len(therms) > 0:
+            thermDevice = therms[0]
+            with open(thermDevice, "r", encoding="utf-8") as f:
+                s = f.readline()
                 # print(f"Temp 1st str: {str}")
-                strLen = len(str)
-                if str and strLen > 4 and str[strLen - 4] == "Y":
+                slen = len(s)
+                if s and slen > 4 and s[slen - 4] == "Y":
                     # Temp reading is good
                     try:
-                        str = f.readline()
+                        s = f.readline()
                         # print(f"Temp 2nd str: {str}")
-                        temp = round(int(re.split("=", str)[1]) / 1000)
+                        temp = round(int(re.split("=", s)[1]) / 1000)
                     except:
-                        print(f"Temp: Failed")
+                        print("Temp: Failed")
                         pass
     return (temp, humidity)
 
