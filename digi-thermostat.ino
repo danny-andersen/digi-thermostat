@@ -200,11 +200,11 @@ void loop()
     // Read RTC
     rtc.refresh();
     lastRTCRead = currentMillis;
-    if (rtc.hour() == 0 && rtc.minute() == 0 && rtc.second() == 0)
-    {
-      // At midnight, re-read the schedules from eeprom, in case of any memory corruption
-      readSchedules();
-    }
+    // if (rtc.hour() == 0 && rtc.minute() == 0 && rtc.second() == 0)
+    // {
+    //   // At midnight, re-read the schedules from eeprom, in case of any memory corruption
+    //   readSchedules();
+    // }
     changedState = 1;
   }
   //  Serial.print(getDateStr());
@@ -240,7 +240,7 @@ void loop()
   // Read thermometer if not got remote reading
   if ((currentMillis - lastThermTempTime) > RX_TEMP_INTERVAL)
   {
-    //Remote temp reading timed out - use local
+    // Remote temp reading timed out - use local
     if ((currentMillis - lastTempRead) > TEMPERATURE_READ_INTERVAL)
     {
       readLocalTemp();
@@ -249,7 +249,7 @@ void loop()
       changedState = 1;
       boilerRunTime = getRunTime();
     }
-    //Reset sent humidity as well
+    // Reset sent humidity as well
     currentSentHumidity = 2000;
   }
   else
@@ -312,7 +312,8 @@ void loop()
   }
 
   // Read switch input
-  readInputs();
+  // Note functionality of push button switch on rotary removed
+  // readInputs();
 
   // Turn heating on or off depending on temp
   if (currentSetTemp > MAX_SET_TEMP || currentSetTemp < MIN_SET_TEMP)
@@ -583,10 +584,13 @@ void readSchedules()
   cnt = 1 + (MAX_SCHEDULES * sizeof(SchedByElem));
   if (eepromRead(cnt) == 1)
   {
-    // Holiday has been set
+    // Holiday has been set - read in
     cnt++;
-    holiday.raw[0] = eepromRead(cnt);
-    cnt++;
+    for (int j = 0; j < sizeof(HolidayUnion); j++)
+    {
+      holiday.raw[j] = eepromRead(cnt);
+      cnt++;
+    }
   }
   //  Serial.println("holiday? " + String(holiday.elem.valid) + " start day: " + String(holiday.elem.startDate.dayOfMonth));
 }
@@ -824,7 +828,7 @@ void setThermTemp()
     // Rx Temp looks sensible (1-50 C), use it
     currentSentThermTemp = tp->temp;
   }
-  if (tp->humidity >= 0 && tp->humidity <= 1000) 
+  if (tp->humidity >= 0 && tp->humidity <= 1000)
   {
     // Rx Humidity looks sensible (0- 100%), use it
     currentSentHumidity = tp->humidity;
@@ -883,8 +887,11 @@ void setHoliday()
   cnt++;
   byte *hols;
   hols = &dtp->raw[0];
-  eepromWrite(cnt, *hols++);
-  cnt++;
+  for (int j = 0; j < sizeof(HolidayUnion); j++)
+  {
+    eepromWrite(cnt, *hols++);
+    cnt++;
+  }
   changedState = 1;
 }
 
@@ -1002,7 +1009,7 @@ void displayState()
   lcd.print(lcdBuff);
   // lcd.print(String(runTimeStr) + " Set:" + tempStr);
 
-  //Display Row 3 - Alternate between the Wind speed, Humidity and Boiler run time if boiler on, followed by the external temp
+  // Display Row 3 - Alternate between the Wind speed, Humidity and Boiler run time if boiler on, followed by the external temp
   lcd.setCursor(0, 2);
   uint8_t len = 0;
   uint8_t wlen = strlen(windStr);
@@ -1017,35 +1024,35 @@ void displayState()
   }
   else if (rtc.second() % 2 && currentSentHumidity != 2000)
   {
-    //Display Humidity
+    // Display Humidity
     String humid = getTempStr(currentSentHumidity);
     humid.toCharArray(tempStr, TEMP_SIZE);
     len = snprintf(lcdBuff, 11, humidStr, tempStr);
   }
-  else if (boilerRunTime != 0) 
+  else if (boilerRunTime != 0)
   {
-      // Boiler is on - display how long for on row 2
-      getMinSec(boilerRunTime, &run[5]);
-      // strncat(runTimeStr, &run[0], strlen(run));
-      len = snprintf(lcdBuff, 11, "%s", run);
-      // strncat(&runTimeStr[8], sp, 1);
-      //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
+    // Boiler is on - display how long for on row 2
+    getMinSec(boilerRunTime, &run[5]);
+    // strncat(runTimeStr, &run[0], strlen(run));
+    len = snprintf(lcdBuff, 11, "%s", run);
+    // strncat(&runTimeStr[8], sp, 1);
+    //    Serial.println("Runtime:" + String(runTime) + " 3digi: " + String(threeDigit) + " runTimeStr: " + runTimeStr + " big: " + String(bigChangeOfState));
   }
-  else if ((rtc.second()+1) % 3 && currentSentHumidity != 2000)
+  else if ((rtc.second() + 1) % 3 && currentSentHumidity != 2000)
   {
-    //Display Humidity for 2 secs if boiler off
+    // Display Humidity for 2 secs if boiler off
     String humid = getTempStr(currentSentHumidity);
     humid.toCharArray(tempStr, TEMP_SIZE);
     len = snprintf(lcdBuff, 11, humidStr, tempStr);
   }
-  else if ((rtc.second()+1) % 2 && wlen != 0)
+  else if ((rtc.second() + 1) % 2 && wlen != 0)
   {
     // display wind speed for 2 secs if bpiler off
     len = snprintf(lcdBuff, MAX_WIND_SIZE, "%s", windStr);
   }
   else
   {
-    //Show default
+    // Show default
     char bs[] = "Heat : %s";
     char on[] = "ON  ";
     char off[] = "OFF ";
