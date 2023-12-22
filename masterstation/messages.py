@@ -172,15 +172,16 @@ class StationContext:
     setTempTime = 0
     setHolidayTime = 0
     setSchedTime = 0
+    lastPirTime = 0
     scheduleMsgs: list = []
     tempMotd: str = None
     tempMotdTime = 0
-    currentSetTemp = 0.0  # current set temp
+    currentSetTemp: float = -1000.0  # current set temp
     currentBoilerStatus = 0.0  # off
     currentPirStatus = 0  # off
-    currentTemp: float = 0.0
-    currentHumidity: float = 0.0
-    currentExtTemp = 1000.0
+    currentTemp: float = -1000.0
+    currentHumidity: float = -1000.0
+    currentExtTemp: float = -1000.0
     noOfSchedules = 0
 
     def __init__(self, stn=-1) -> None:

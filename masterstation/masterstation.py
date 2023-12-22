@@ -199,26 +199,14 @@ def createThermMsg(temp: float, humidity: float):
 def generateStatusFile(sc: StationContext):
     # print("Generate status file")
     now: datetime = datetime.now()
-    setExtTemp = False
     try:
         if sc.stationNo == 1:
             statusFile = STATUS_FILE
         else:
             statusFile = f"{sc.stationNo}_{STATUS_FILE}"
-            setExtTemp = True  # External thermometer
 
         with open(statusFile, "w", encoding="utf-8") as statusf:
-            if sc.currentTemp < 1000:
-                statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
-                # if setExtTemp:
-                #     with open(EXTTEMP_FILE, "r", encoding="utf-8") as extf:
-                #         windStr = extf.readlines()[1]
-                #     # Write temp to ext temp file for downloading to thermostat
-                #     with open(EXTTEMP_FILE, "w", encoding="utf-8") as extf:
-                #         extf.write(f"{sc.currentTemp/10:0.1f}\n")
-                #         extf.write(windStr)
-            else:
-                statusf.write("External temp: Not Set\n")
+            statusf.write(f"Current temp: {sc.currentTemp/10:0.1f}\n")
             statusf.write(f"Current humidity: {sc.currentHumidity/10:0.1f}\n")
             statusf.write(f"Current set temp: {sc.currentSetTemp/10:0.1f}\n")
             heatOn = "No" if sc.currentBoilerStatus == 0 else "Yes"
@@ -230,6 +218,9 @@ def generateStatusFile(sc: StationContext):
                 statusf.write("External temp: Not Set\n")
             statusf.write(f"No of Schedules: {sc.noOfSchedules}\n")
             statusf.write(f"Last heard time: {now.strftime('%Y%m%d %H:%M:%S')}\n")
+            statusf.write(
+                f"Last PIR Event time: {datetime.fromtimestamp(sc.lastPirTime).strftime('%Y%m%d %H:%M:%S') if sc.lastPirTime != 0 else 'Never'}\n"
+            )
             statusf.write(f"PIR:{sc.currentPirStatus}\n")
 
     except:
@@ -260,7 +251,10 @@ def getMessage():
         sc.setHolidayTime = 0
         sc.extTempTime = 0
         sc.setSchedTime = 0
-        sc.currentHumidity = 0
+        sc.currentTemp = -1000
+        sc.currentExtTemp = -1000
+        sc.currentSetTemp = -1000
+        sc.currentHumidity = -1000
         sc.motdExpiry = MOTD_EXPIRY_SECS
         sc.scheduleMsgs = []
     temp = args.get("t", type=float)
@@ -278,6 +272,8 @@ def getMessage():
     pir = args.get("p", type=int, default=0)
     if (pir and not sc.currentPirStatus) or (not pir and sc.currentPirStatus):
         sc.currentPirStatus = pir
+    if pir:
+        sc.lastPirTime = datetime.now().timestamp()
     response: Response = getNoMessage()
     updateOnly = args.get("u", type=int, default=0)
     if not updateOnly:
